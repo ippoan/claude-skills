@@ -1,0 +1,28 @@
+name: auto-merge
+
+# Flips the "auto-merge" flag on the PR via gh CLI. The actual merge gate
+# is the branch protection rule on the target branch, not this workflow.
+#
+# Prerequisites (one-time, in repo Settings):
+#   - General → "Allow auto-merge" is ON
+#   - Branches → main protection requires the `ci / shellcheck` check
+#     from test.yml. Without that, this would merge instantly.
+
+on:
+  pull_request_target:
+    types: [opened, ready_for_review, reopened, synchronize]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  enable-auto-merge:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge (squash)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"

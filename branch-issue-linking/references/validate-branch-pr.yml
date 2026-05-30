@@ -1,0 +1,50 @@
+name: Validate Branch & PR
+
+# サーバサイドで branch 名 + PR description のキーワードを検証する。
+# ローカル hook (claude-hooks/worktree-naming-guard.sh) は bypass 可能なため、
+# auto-merge の前提条件として PR 検証 workflow を必須化する。
+#
+# 配置: 各 repo の .github/workflows/validate-branch-pr.yml
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate branch name format
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          if [[ ! "$BRANCH" =~ ^[0-9]+-(feat|fix|refactor|infra)-[a-z0-9-]+$ ]]; then
+            echo "::error::Branch name '$BRANCH' violates policy."
+            echo "::error::Required pattern: ^[0-9]+-(feat|fix|refactor|infra)-[a-z0-9-]+\$"
+            echo "::error::Example: 123-fix-onedrive-token"
+            exit 1
+          fi
+          echo "✓ Branch name format is valid: $BRANCH"
+
+      - name: Check for prohibited auto-close keywords in PR body
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if grep -Ei '(closes|fixes|resolves)[[:space:]]+#[0-9]+' <<< "$PR_BODY"; then
+            echo "::error::Use 'Refs #N' instead of Closes/Fixes/Resolves to prevent auto-close."
+            echo "::error::release tag 後に ci-dashboard で目視 close するため、auto-close キーワードは禁止。"
+            exit 1
+          fi
+          echo "✓ PR body uses correct keywords (no Closes/Fixes/Resolves)"
+
+      - name: Ensure PR body contains issue reference
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if ! grep -Ei '(refs|related to|part of)[[:space:]]+#[0-9]+' <<< "$PR_BODY"; then
+            echo "::warning::PR body should contain issue reference (Refs/Related to/Part of #N)"
+          else
+            echo "✓ PR body contains issue reference"
+          fi
