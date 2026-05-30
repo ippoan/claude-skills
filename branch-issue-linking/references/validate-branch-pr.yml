@@ -18,8 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Validate branch name format
+        env:
+          BRANCH: ${{ github.head_ref }}
         run: |
-          BRANCH="${{ github.head_ref }}"
           if [[ ! "$BRANCH" =~ ^[0-9]+-(feat|fix|refactor|infra)-[a-z0-9-]+$ ]]; then
             echo "::error::Branch name '$BRANCH' violates policy."
             echo "::error::Required pattern: ^[0-9]+-(feat|fix|refactor|infra)-[a-z0-9-]+\$"
