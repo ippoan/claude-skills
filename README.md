@@ -1,54 +1,51 @@
 # claude-skills
 
-Shared Claude Code skills for `ippoan` projects.
+`ippoan` プロジェクト向けの共有 Claude Code スキル集。
 
-> Migrated from `yhonda-ohishi/claude-skills`. Skills that embedded secrets or
-> internal-infrastructure details (`secrets.md`, `supabase-r2`, `incus-sandbox`,
-> `wt-quick`, `secret-rotate-pipe`, `dev-proxy-debug`) were intentionally left
-> behind during the migration.
+> `yhonda-ohishi/claude-skills` から移行。secret 値や内部インフラの詳細を埋め込んでいたスキル (`secrets.md`, `supabase-r2`, `incus-sandbox`, `wt-quick`, `secret-rotate-pipe`, `dev-proxy-debug`) は移行時に意図的に除外した。
 
-Skills live in per-directory folders containing a `SKILL.md`. When this repo is opened as a project, every skill becomes available via `/<skill-name>`.
+各スキルは `SKILL.md` を含むディレクトリ単位で配置されている。このリポジトリをプロジェクトとして開くと、全スキルが `/<skill-name>` で利用可能になる。
 
-## Skills
+## スキル一覧
 
-- **open-multirepo** — Generate a `claude.ai/code` launch URL that pre-attaches multiple repositories and an optional prompt. Usage: `/open-multirepo <repo1>, <repo2>, ... — <optional prompt>`
-- **check-issue** — Inspect a GitHub issue and surface context for triage.
-- **pr-push** — Create and push a PR following repo conventions.
-- **pr-subscribe** — Subscribe the current CCoW session to a PR's activity (CI failure / comment / review) via `subscribe_pr_activity`, so the session is re-woken on PR events (cc-relay #69). Takes a PR URL / `owner/repo#N`; asks the user if none is given. Usage: `/pr-subscribe <PR URL>`
-- **wt-direct-push** — Worktree-based direct-push workflow.
-- **worktree-cleanup** — Clean up stale worktrees.
-- **tag-release** — Cut a tag/release safely.
-- **ci-init** / **ci-cache-patterns** — CI bootstrap and cache pattern helpers.
-- **gh-actions-phantom-permission** — Debug GitHub Actions "phantom 0-job failure" runs caused by invalid `GITHUB_TOKEN` permission scopes (e.g. `administration: write`, which is a fine-grained PAT scope, not a workflow-token scope).
-- **coverage-check** / **coverage-test-patterns** — Coverage gates and patterns.
-- **migrate-test** — Repo migration test helper.
-- **npm-supply-chain** — npm supply-chain checks.
-- **memory-prune** — Prune stale memory entries.
-- **large-codebase-setup** — Apply the Anthropic "large codebases" blog 3 pillars (hierarchical CLAUDE.md, Stop hook self-reflection, LSP integration) to a repo.
-- **wrangler-logs** — Tail and search Cloudflare Workers logs.
-- **cdp-browser** — Drive a CDP-controlled browser.
-- **egov-api** / **egov-spec** — e-Gov API helpers.
-- **nuxt-vitest** / **worker-vitest** — Vitest harnesses for Nuxt and Workers.
-- **type-safe-pipeline** — Type-safe data pipeline scaffolding.
-- **verify-env** — Verify environment variables.
-- **repo-migrate** / **package-publish-debug** — Misc repo/package tooling.
+- **open-multirepo** — 複数リポジトリと任意のプロンプトを事前アタッチした `claude.ai/code` の起動 URL を生成する。使い方: `/open-multirepo <repo1>, <repo2>, ... — <optional prompt>`
+- **check-issue** — GitHub issue を確認してトリアージ用のコンテキストを抽出する。
+- **pr-push** — リポジトリの規約に従って PR を作成・push する。
+- **pr-subscribe** — `subscribe_pr_activity` 経由で、現在の CCoW セッションを PR の活動 (CI 失敗 / コメント / レビュー) に購読させる。PR イベントでセッションが再起動される (cc-relay #69)。PR URL / `owner/repo#N` を渡す。未指定時は user に確認する。使い方: `/pr-subscribe <PR URL>`
+- **wt-direct-push** — worktree から直接 push するワークフロー。
+- **worktree-cleanup** — 古い worktree を一括掃除する。
+- **tag-release** — タグ/リリースを安全に切る。
+- **ci-init** / **ci-cache-patterns** — CI のブートストラップ・キャッシュパターン補助。
+- **gh-actions-phantom-permission** — `GITHUB_TOKEN` の無効な permission スコープ (例: `administration: write` は workflow-token ではなく fine-grained PAT のスコープ) が原因の GitHub Actions "phantom 0-job failure" run のデバッグ。
+- **coverage-check** / **coverage-test-patterns** — カバレッジゲートとテストパターン。
+- **migrate-test** — リポジトリ移行のテスト補助。
+- **npm-supply-chain** — npm サプライチェーンチェック。
+- **memory-prune** — 古い memory エントリを整理する。
+- **large-codebase-setup** — Anthropic の "large codebases" ブログ記事の 3 本柱 (階層 CLAUDE.md / Stop hook による自己反省 / LSP 統合) をリポジトリに適用する。
+- **wrangler-logs** — Cloudflare Workers のログを tail・検索する。
+- **cdp-browser** — CDP 経由でブラウザを操作する。
+- **egov-api** / **egov-spec** — e-Gov API ヘルパー。
+- **nuxt-vitest** / **worker-vitest** — Nuxt / Workers 向け Vitest ハーネス。
+- **type-safe-pipeline** — 型安全なデータパイプラインの足場を作る。
+- **verify-env** — 環境変数を検証する。
+- **repo-migrate** / **package-publish-debug** — リポジトリ・パッケージ関連のその他ツール。
 
-Standalone markdown notes (not skills): `backend-check.md`, `bazel-rust.md`, `compare-pdf.md`, `smart-read.md`.
+スキルではない単独の markdown ノート: `backend-check.md`, `bazel-rust.md`, `compare-pdf.md`, `smart-read.md`。
 
-## Layout
+## ディレクトリ構成
 
 ```
-.claude/skills/<name>/SKILL.md   # project-level skills (preferred path)
-<name>/SKILL.md                  # historic top-level layout (still supported)
+.claude/skills/<name>/SKILL.md   # プロジェクトレベルのスキル (推奨パス)
+<name>/SKILL.md                  # 旧来の top-level レイアウト (引き続きサポート)
 ```
 
-New skills should use `.claude/skills/<name>/SKILL.md`.
+新しいスキルは `.claude/skills/<name>/SKILL.md` を使うこと。
 
-## Using these skills in other repos
+## 別リポジトリからスキルを使う
 
-The skills become project-level only when a Claude Code session is launched on this repo. To use them from another repo (e.g. `ippoan/auth-worker`), pick one:
+これらのスキルがプロジェクトレベルで使えるのは、このリポジトリで Claude Code セッションを起動した時だけ。別リポジトリ (例: `ippoan/auth-worker`) から使う場合は以下のいずれかを選ぶ。
 
-- **(Recommended) Auto-install via SessionStart hook** — register [`session-start-install-skills.sh`](https://github.com/yhonda-ohishi/claude-hooks/blob/master/session-start-install-skills.sh) from `yhonda-ohishi/claude-hooks` in `~/.claude/settings.json`. It shallow-clones `claude-skills` + `claude-hooks` into `~/.claude/sources/` and symlinks every `SKILL.md` into `~/.claude/skills/<name>` (idempotent, TTL 1h). After it runs once, all skills listed above are available in every session.
+- **(推奨) SessionStart hook で自動インストール** — `yhonda-ohishi/claude-hooks` の [`session-start-install-skills.sh`](https://github.com/yhonda-ohishi/claude-hooks/blob/master/session-start-install-skills.sh) を `~/.claude/settings.json` に登録する。`claude-skills` と `claude-hooks` を `~/.claude/sources/` に shallow clone し、各 `SKILL.md` を `~/.claude/skills/<name>` にシンボリックリンクする (冪等、TTL 1 時間)。一度実行すれば、以降の全セッションで上記スキルが利用可能になる。
 
   ```jsonc
   {
@@ -64,7 +61,7 @@ The skills become project-level only when a Claude Code session is launched on t
   }
   ```
 
-  See [claude-hooks README](https://github.com/yhonda-ohishi/claude-hooks#session-start-install-skillssh-詳細) for env vars and tests.
+  環境変数とテストの詳細は [claude-hooks README](https://github.com/yhonda-ohishi/claude-hooks#session-start-install-skillssh-詳細) を参照。
 
-- Copy the relevant `SKILL.md` into that repo's `.claude/skills/<name>/`, or
-- Publish `claude-skills` as a plugin and enable it via `.claude/settings.json`.
+- 対象の `SKILL.md` を別リポジトリの `.claude/skills/<name>/` にコピーする
+- `claude-skills` をプラグインとして公開し、`.claude/settings.json` で有効化する
