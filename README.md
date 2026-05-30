@@ -22,6 +22,7 @@
 - **npm-supply-chain** — npm サプライチェーンチェック。
 - **memory-prune** — 古い memory エントリを整理する。
 - **large-codebase-setup** — Anthropic の "large codebases" ブログ記事の 3 本柱 (階層 CLAUDE.md / Stop hook による自己反省 / LSP 統合) をリポジトリに適用する。
+- **ippoan-infra-map** — CCoW 基盤 5 repo (claude-md / claude-hooks / mcp-relay-rs / cc-relay / mcp-cf-workers) の構造・役割・依存方向と「どの repo に何を足すか」を 1 枚にまとめた situational reference。
 - **wrangler-logs** — Cloudflare Workers のログを tail・検索する。
 - **cdp-browser** — CDP 経由でブラウザを操作する。
 - **egov-api** / **egov-spec** — e-Gov API ヘルパー。
