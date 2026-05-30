@@ -1,0 +1,8 @@
+# direct-push-OK repos: branch protection 無し / auto-merge 未設定の repo を列挙。
+# 一行 1 repo (owner/name)、`#` でコメント。空行 OK。
+# このリストに無い repo で /wt-direct-push を呼ぶとエラー (use /pr-push) になる。
+
+ippoan/ci-workflows
+yhonda-ohishi/claude-hooks
+yhonda-ohishi/claude-skills
+ippoan/github-mcp-server-rs

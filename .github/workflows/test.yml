@@ -1,0 +1,16 @@
+name: test
+
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  ci:
+    uses: ippoan/ci-workflows/.github/workflows/shell-ci.yml@main
+    with:
+      severity: warning
