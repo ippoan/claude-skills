@@ -82,7 +82,9 @@ grep X-File-Count /tmp/headers.txt
 ### 4. 通常の Read tool で読む
 
 展開後は普通のローカル file。`Read /tmp/ref-files/<topic>/foo.md` でアクセス。
-binary (eml, pdf) は適切な tool (decode / pdf skill) で。
+- `.eml` (メール) は MIME なので Read で開いても読めない → **eml-read** skill で
+  decode (`python3 ~/.claude/skills/eml-read/scripts/eml-read.py <file.eml>`)。
+- `.pdf` は pdf skill で。
 
 ## オプション: root path で repo 全体
 
