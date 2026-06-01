@@ -27,6 +27,7 @@
 - **cdp-browser** — CDP 経由でブラウザを操作する。
 - **egov-api** / **egov-spec** — e-Gov API ヘルパー。
 - **ref-files-bulk** — ref-files MCP の `folder_download_url` で folder 配下を tar.gz で一括取得 → `/tmp/` に展開して通常の Read で読むスキル。`file_get` を 1 つずつ呼ぶ token 浪費を避ける。
+- **mcp-user-setup** — Cloudflare Worker-native MCP server (`ref-files-worker /mcp` 等) を `~/.claude.json` の user-scope `.mcpServers` に手動 attach するスキル。CCoW では `session-start-write-mcp-user-scope.sh` hook が自動実行するため、ローカル dev / 別環境 / hook skip 時の手動 fallback。
 - **nuxt-vitest** / **worker-vitest** — Nuxt / Workers 向け Vitest ハーネス。
 - **type-safe-pipeline** — 型安全なデータパイプラインの足場を作る。
 - **verify-env** — 環境変数を検証する。
