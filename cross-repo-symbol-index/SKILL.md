@@ -1,165 +1,84 @@
 ---
 name: cross-repo-symbol-index
-description: CCoW で 30+ repo を跨ぐ構造把握を人力で毎 session 辿り直すコストを消すための index システムの設計。CI で抽出した symbol(開始/終了行付き) を D1 に貯める。symbol 検索自体は MCP にせずローカル(smart-read/LSP)で引く (CCoW は repo clone 済み)。D1 の用途は skills/map の鮮度比較(src_hash)と人間向け view 生成。ippoan-infra-map (手書き 5 repo) の自動化版。トリガー: 「横断 symbol 検索」「search_symbols の中身」「repo 跨ぎの構造」「symbol index」「LSP を CI で」「D1 に symbol」「skills 鮮度比較」「どこに関数がある」「cross-repo index」「構造把握が毎回遅い」等。
+description: CCoW で 30+ repo を跨ぐ構造把握 (どの repo の何処に symbol があるか) のやり方と、その設計検討の結論。結論はシンプル: symbol が要る時はその場でローカル ctags (全 31 repo で 3.8 秒)、保存はしない。唯一永続的に要るのは「手書き skill (ippoan-infra-map 等) が code と乖離してないか」の鮮度チェックで、これは SessionStart hook が generated-from の tree-sha 比較で行う。トリガー: 「横断 symbol 検索」「repo 跨ぎの構造」「symbol index」「どこに関数がある」「skill 鮮度」「ctags でローカル抽出」「cross-repo index」「構造把握が毎回遅い」等。
 ---
 
-# cross-repo-symbol-index — 横断 symbol index の設計
+# cross-repo-symbol-index — 横断構造把握 (結論: ローカル ctags + skill 鮮度 hook)
 
-CCoW では 30+ repo が `/home/user/<repo>` に clone されるが、各 repo の CLAUDE.md
-は遅延ロードで、起動時の「どの repo の何処に何があるか」は依然ゼロ知識。結果、
-毎 session/毎タスクで grep + source 読みで構造を再構成しており、context とターンを
-浪費している。これを **CI で機械抽出した symbol index を D1 に貯め、MCP で返す** 形で
-自動化する。
+CCoW では 30+ repo が `/home/user/<repo>` に clone される。「どの repo の何処に何が
+あるか」を毎 session 人力で grep し直すのが当初の課題だった。**長い検討の結論は
+「index を作って保存する必要は無い」**。
 
-`ippoan-infra-map` skill (手書きで 5 repo を維持) の弱点 — 人力ゆえ腐る — を生成物で
-置き換えるのが本旨。
-
-## 結論 (1 枚)
+## 結論 (これだけ)
 
 ```
-生成 (CI / 各 repo, ci-workflows の reusable workflow)
-  test の後 (依存が cargo build / npm ci で温まった状態) → LSP で抽出:
-     symbols(name, kind, file_path, start_line, end_line, signature)
-     deps(manifest 由来)  /  links(import 静的解析; 後で LSP 参照に格上げ)
-     src_hash (git rev-parse HEAD:src 等)
-  → D1 に push (machine write・PR 無し)
+symbol が要る時:  その場でローカル ctags。全 31 repo で 3.8 秒、auth-worker 単体 0.3 秒。
+                  保存しない。MCP も D1 も CI も要らない。
+                  (universal-ctags は .git/依存を default 除外。--output-format=json で
+                   name/kind/開始終了行が出る。smart-read skill も同系統。)
 
-保管 (D1 = 共有冷蔵庫, ci-dashboard が所有)
-  repos / symbols / deps / links     content-hash キー・src_hash で鮮度
-
-symbol 検索 (= 消費)  ※ MCP にしない
-  CCoW では 30 repo が clone 済み → symbol はローカルで引くのが速い:
-    smart-read skill (symbol 単位抽出) / session 内 LSP / grep
-  MCP 往復は不要。search_symbols は MCP tool から外した (ci-dashboard#208)。
-
-D1 の用途 (symbol MCP query ではない)
-  (1) skills/map の鮮度比較: repos.src_hash vs 現状で「古い」を検知
-  (2) 人間向け view 生成: Worker が D1 を読んで read-only ページを配信
+唯一 永続的に要るもの:  手書き skill (ippoan-infra-map 等) が code と乖離してないか
+   → SessionStart hook が skill の `generated-from` (記録した tree-sha) vs
+     現在の repo の tree-sha を比較し、ズレた skill を warning。
+   → Claude は警告を見てローカル ctags 等で skill を作り直す。
 ```
 
-## なぜこの形か (設計判断の経緯)
+### 実測 (この結論の根拠)
 
-設計に至るまでに潰した選択肢と理由。再検討時にループしないための記録。
+| | 時間 |
+|---|---|
+| ローカル ctags 全 31 repo | **3.8 秒** / 199,845 symbols |
+| auth-worker 単体 (271 files) | 0.32 秒 |
+| 同 build-payload 整形 | 0.14 秒 |
 
-### 1. per-folder CLAUDE.md は repo 内層だけ。横断は埋まらない
+抽出が 0.3 秒なら「index を D1/R2 に保存して serve」する旨みは無い。必要な時に
+ローカルで舐めれば済む。
 
-階層 CLAUDE.md (公式 best practice) は「その repo に入った後」を速くするが、CCoW でも
-`/home/user` に CLAUDE.md は無く各 repo の CLAUDE.md は遅延ロードなので、起動時の
-「30 のうちどれを開くか + 各 repo の全体像」は埋まらない。LSP も workspace=repo 単位で
-同じ。→ 横断層は別途 index が要る。
+## なぜ「index を保存・serve」しないか (撤去した過剰設計の記録)
 
-### 2. 保管は skills(markdown) でなく D1
+当初は per-repo CI で ctags → D1 に投入 → MCP `search_symbols` で query、という形を
+作ったが**全部撤去した**。理由:
 
-| | markdown skills | MCP + D1 |
-|---|---|---|
-| クエリ | 全文ロード/grep | 構造クエリ (symbol を 1 行で返す・token 10x減) |
-| 横断リンク | 人/生成で維持 | SQL で関係を持てる |
-| 鮮度 (remote/pull) | ローカル git では remote 最新を知れない | generator が main で走り D1 に刻む・サーバ側で stale 判定 |
+1. **per-repo CI 生成は旧式 (LSIF 方式)**。Zoekt/Sourcegraph 等の横断 code index は
+   「専用 indexserver による中央 pull 型」で per-repo CI を**回避する**のが定石。実測でも
+   per-repo CI は **5 分/repo** (apt install ctags + runner + checkout が overhead の 99%、
+   ctags 本体は 0.3 秒) と最悪だった。
+2. **symbol 検索はローカルで完結する** (repo が clone 済み)。MCP `search_symbols` も外した
+   — clone 済み repo を MCP 往復で引く意味が無い。
+3. **保存先を D1/R2 にしても**、bulk を HTTP で送るなら secret が要り (CF Access 配線も要る)、
+   MCP で送るなら 20 万行が context を食う。**そもそも保存不要**なので全部消える。
+4. CCoW では D1 への小さな write は **D1 MCP (`d1_database_query`) が認証済み**で secret 不要。
+   が、保存物が無いので使わない。
 
-lean な TOC (どの repo が何か) だけ markdown/user-memory に常駐、詳細 (symbol/link) は D1。
+撤去したもの: ci-dashboard の D1 binding / ingest endpoint / `search_symbols` MCP /
+freshness・head endpoint、`SYMBOL_INDEX_INGEST_SECRET`、ci-workflows の generator
+workflow、auth-worker の per-repo CI job、D1 database 本体。
 
-### 3. 生成エンジンと場所: LSP を CI で
+## skill 鮮度チェックの規約 (generated-from)
 
-- **LSP vs tree-sitter**: 開始/終了+symbol だけなら tree-sitter で足りる。LSP の上乗せ
-  価値は意味的な参照 (どこから呼ばれてる)。それを取るなら LSP。
-- **install.sh で生成しない**: LSP は対象 repo の依存が解決済み (`cargo fetch`/`npm install`)
-  でないと正確に動かない。`git clone` はソースだけでライブラリを持ってこない。ephemeral な
-  CCoW コンテナの install.sh でやると **毎 session 30 repo 分の依存解決を cold で繰り返す**。
-- **CI で生成する**: 各 repo の CI は test のために既に依存をビルド済み。その温まった状態を
-  再利用すれば抽出はほぼタダ。install.sh は何もしない (生成は CI、symbol 検索はローカル、
-  鮮度比較/view はサーバ側で D1 を読む)。
+code から起こした手書き skill (構造 map 等) は frontmatter に **`generated-from`** を
+持つ。形式は `repo:tree-sha` を space 区切りで 1 行:
 
-> 注: v1 の generator は universal-ctags (toolchain 不要・多言語・start/end が取れる)。
-> 意味的な参照グラフ (links) が要るようになったら LSP に格上げする。
-
-### 4. symbol 検索は MCP にしない (ローカルで引く)
-
-当初は ci-dashboard の既存 `search_symbols` (MCP) の backend を D1 に差し替える設計
-だったが撤回した。**CCoW では 30 repo が clone 済みなので、symbol はローカル
-(`smart-read` skill / session 内 LSP / grep) で引く方が速く、MCP 往復が要らない**。
-MCP search_symbols が要るのは「clone されてない repo を引く」時だけで、全 repo
-clone 済みの CCoW ではほぼ出番が無い。→ search_symbols は MCP tool から外した
-(ci-dashboard#208)。
-
-ただし **D1 (symbol index) 自体は残す**。用途を symbol の MCP query から次に振り替えた:
-
-- **(1) skills/map の鮮度比較**: `repos.src_hash` vs 現状の差で「skills が古い」を検知
-  (前段で議論した「git 変更検知 → skills 未更新なら警告」の data source)。
-- **(2) 人間向け view 生成**: Worker が D1 を読んで org 構造の read-only ページを配信。
-
-generator (CI で抽出 → D1 push) と ingest endpoint はこの 2 用途のために残置する。
-
-### 5. 人の merge を data path から排除
-
-map を commit して PR で同期、は静的 markdown 時代の名残。生成物は「作り直すもの」で
-レビュー対象ではない。data は全部 CI→D1 の machine write で、PR/merge を一切経由しない。
-人が触る PR は generator / hook の **コードそのもの** (普通の開発) だけ。
-
-## 担当 repo (どこに何を足すか)
-
-| 部品 | repo | 内容 |
-|---|---|---|
-| 設計 doc (これ) | **claude-skills** | 結論と経緯 |
-| generator | **ci-workflows** | reusable workflow `symbol-index.yml`。test 後に LSP 抽出 → D1 push |
-| D1 (保管) + ingest | **ci-dashboard** | wrangler に D1 binding / schema / `POST /internal/symbol-index`。用途は鮮度比較 + view (symbol の MCP query ではない) |
-| symbol 検索 | **ローカル** | `smart-read` skill / session 内 LSP / grep。MCP にしない |
-| 鮮度比較 / view | **ci-dashboard** (今後) | `repos.src_hash` で skills 鮮度判定 / D1 を読む read-only ページ |
-
-関連 issue: claude-skills#10 / ci-dashboard#205 / ci-workflows#90
-
-## D1 schema (契約)
-
-全部品が依存する中心の契約。
-
-```sql
-CREATE TABLE repos (
-  repo        TEXT PRIMARY KEY,      -- 'rust-alc-api'
-  summary     TEXT,                  -- 1 行説明
-  lang        TEXT,                  -- 主要言語
-  head_sha    TEXT,
-  src_hash    TEXT,                  -- 鮮度キー (git rev-parse HEAD:src 等)
-  updated_at  INTEGER
-);
-
-CREATE TABLE symbols (
-  repo        TEXT NOT NULL,
-  name        TEXT NOT NULL,
-  kind        TEXT NOT NULL,         -- function/class/struct/interface/type/enum/trait/mod
-  file_path   TEXT NOT NULL,
-  start_line  INTEGER NOT NULL,      -- LSP range.start.line
-  end_line    INTEGER NOT NULL,      -- LSP range.end.line
-  signature   TEXT,
-  file_hash   TEXT                   -- incremental 用 (変更 file だけ再抽出)
-);
-CREATE INDEX idx_symbols_lookup ON symbols(repo, name, kind);
-
-CREATE TABLE deps (
-  repo TEXT NOT NULL, name TEXT NOT NULL, version TEXT, kind TEXT
-);
-
-CREATE TABLE links (
-  from_repo TEXT NOT NULL, from_symbol TEXT,
-  to_repo TEXT, to_symbol TEXT, kind TEXT   -- import / call / cross-service
-);
+```yaml
+---
+name: ippoan-infra-map
+generated-from: claude-md:<tree-sha> claude-hooks:<tree-sha> mcp-relay-rs:<tree-sha> ...
+---
 ```
 
-## 鮮度
+`tree-sha` は生成時の `git -C /home/user/<repo> rev-parse HEAD^{tree}`。
 
-- generator が push 時に `src_hash` を更新。query tool は repo の現 `src_hash` と
-  比較して `stale: N` を返せる。
-- ローカル基準 (手元 clone) と main 基準 (CI) を分離: 「pull してない」状況でも
-  ローカルは手元と一致、main の鮮度は CI が更新するので破綻しない。
-- → push 前 hook / CI gate / 追加 PR reconcile といった drift 機構は **detail 層には不要**。
+SessionStart hook (claude-hooks `session-start-stale-skills-check.sh` 内) が
+`~/.claude/skills/*/SKILL.md` を走査し、`generated-from` の各 repo について現在の
+tree-sha と比較。ズレてたら「この skill は <repo> の変化に追従していない」と
+additionalContext で警告する。`generated-from` を持たない skill は対象外 (opt-in)。
 
-## フォールバック
-
-- 普段は D1 から取得 (ci-dashboard MCP 経由)。
-- 今いじってる repo だけ最新が確実に要る → その repo だけ `npm install` + 再抽出、
-  または D1 の最新を取得。30 repo 全部を手元で再生成することは無い。
-- D1 が未投入/空の repo は ci-dashboard 側で既存 GitHub code-search に graceful fallback。
+> 鮮度判定に ctags は不要 — tree-sha の比較だけ。symbol が実際に要る時に初めて
+> ローカル ctags する。
 
 ## 関連 skill
 
-- `ippoan-infra-map` — 手書きの 5 repo 横断マップ。本 index の前身 (これを生成物化する)
-- `large-codebase-setup` — 階層 CLAUDE.md / Stop hook / LSP の 3 本柱 (repo 内層)
-- `smart-read` — file 全体でなく symbol 単位で抽出して context 節約 (ローカルで READ する側)
+- `smart-read` — file 全体でなく symbol 単位でローカル抽出 (これの org 横断版が
+  「その場 ctags」)
+- `ippoan-infra-map` — 手書きの基盤 5 repo マップ。`generated-from` を持たせる第一候補
+- `secret-inject` — (この検討の副産物) no-leak secret 投入 skill。単体で有用なので残置
