@@ -1,0 +1,7 @@
+# MkDocs / GitHub Pages の生成物 (scripts/build_docs.py + mkdocs build)
+/docs/
+/site/
+
+# Python
+__pycache__/
+*.pyc

@@ -1,0 +1,3 @@
+# GitHub Pages (scripts/build_docs.py + mkdocs build) 用の依存。
+# ローカルプレビュー: pip install -r requirements-docs.txt && python scripts/build_docs.py && mkdocs serve
+mkdocs-material>=9.5,<10
