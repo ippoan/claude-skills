@@ -1,7 +1,7 @@
 ---
 name: claude-skills-map
 generated-from: claude-skills:11d265f2ad3e110850c90e9c3beb04978e7da424
-description: ippoan/claude-skills (この repo 自身。Claude Code 共有 skill 集) の構造ナビゲーション。skill ディレクトリ群を「種別 (per-repo map / PR・CI 運用 / 構造把握メタ / secret・MCP / テスト・カバレッジ / freee・egov ドメイン / ブラウザ・ファイル・その他)」ごとにグループ索引化し、SKILL.md レイアウト規約・README 追記・scripts/.claude の位置を 1 枚にまとめる。トリガー: 「claude-skills」「skill 一覧」「skill 追加」「どの skill」「SKILL.md 規約」「<repo>-map どこ」「skill 索引」「skill 種別」等。
+description: ippoan/claude-skills (この repo 自身。Claude Code 共有 skill 集) の構造ナビゲーション。skill ディレクトリ群を「種別 (per-repo map / PR・CI 運用 / 構造把握メタ / secret・MCP / テスト・カバレッジ / freee・egov ドメイン / ブラウザ・ファイル・その他)」ごとにグループ索引化し、SKILL.md レイアウト規約・README 追記・scripts/.claude の位置を 1 枚にまとめる。トリガー:「claude-skills」「skill 一覧」「skill 追加」「どの skill」「SKILL.md 規約」「<repo>-map どこ」「skill 索引」「skill 種別」等。
 ---
 
 # claude-skills-map — ippoan/claude-skills 構造ナビゲーション

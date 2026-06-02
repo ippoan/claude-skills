@@ -1,7 +1,7 @@
 ---
 name: ui-preview-map
 generated-from: ui-preview:92c3bbc08e721c8ac0a7a7a746ea16f67029c8a5
-description: ippoan/ui-preview (Cloudflare Workers + Durable Object、静的 UI 成果物の ephemeral プレビュー配信基盤) の構造ナビゲーション。tar.gz 直 PUT → 展開ガード → SQLite 保存 → 別オリジン配信 → WS live 更新 → TTL 削除、と control/配信オリジン分離・iframe sandbox 隔離・MCP (create_preview/get_preview_stats) の配置と gotcha を 1 枚にまとめる。トリガー: 「ui-preview」「preview 配信」「PreviewDO」「create_preview」「tar.gz PUT」「展開ガード」「PREVIEW_ORIGIN」「iframe sandbox」「version TTL」「ui-preview.ippoan.org」等。
+description: ippoan/ui-preview (Cloudflare Workers + Durable Object、静的 UI 成果物の ephemeral プレビュー配信基盤) の構造ナビゲーション。tar.gz 直 PUT → 展開ガード → SQLite 保存 → 別オリジン配信 → WS live 更新 → TTL 削除、と control/配信オリジン分離・iframe sandbox 隔離・MCP (create_preview/get_preview_stats) の配置と gotcha を 1 枚にまとめる。トリガー:「ui-preview」「preview 配信」「PreviewDO」「create_preview」「tar.gz PUT」「展開ガード」「PREVIEW_ORIGIN」「iframe sandbox」「version TTL」「ui-preview.ippoan.org」等。
 ---
 
 # ui-preview-map — ippoan/ui-preview 構造ナビゲーション

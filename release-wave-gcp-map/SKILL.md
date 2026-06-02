@@ -1,7 +1,7 @@
 ---
 name: release-wave-gcp-map
 generated-from: release-wave-gcp:678d2d0f771c45196508531ef2d96d768e68360a
-description: ippoan/release-wave-gcp (Go / Cloud Run、ci-dashboard から Cloud Run の traffic 操作を代行する薄い proxy) の構造ナビゲーション。flip-traffic / rollback / stage-check の 3 endpoint と認証境界・GCP key 0 個運用の guardrail を 1 枚にまとめる。トリガー: 「release-wave-gcp」「flip-traffic」「rollback」「stage-check」「Cloud Run traffic」「release wave」「revision tag flip」「X-Release-Wave-API-Key」等。
+description: ippoan/release-wave-gcp (Go / Cloud Run、ci-dashboard から Cloud Run の traffic 操作を代行する薄い proxy) の構造ナビゲーション。flip-traffic / rollback / stage-check の 3 endpoint と認証境界・GCP key 0 個運用の guardrail を 1 枚にまとめる。トリガー:「release-wave-gcp」「flip-traffic」「rollback」「stage-check」「Cloud Run traffic」「release wave」「revision tag flip」「X-Release-Wave-API-Key」等。
 ---
 
 # release-wave-gcp-map — ippoan/release-wave-gcp 構造ナビゲーション

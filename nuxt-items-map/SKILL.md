@@ -1,7 +1,7 @@
 ---
 name: nuxt-items-map
 generated-from: nuxt-items:5ab0baf4fa100ab0800f3466399adce4fbd00bb6
-description: ippoan/nuxt-items (物品管理 PWA、Nuxt 4 + Cloudflare Workers) の構造ナビゲーション。バーコード/NFC スキャン・画像アップロード・WebSocket マルチデバイス同期 (Durable Objects) の配置と PWA/同期設定を 1 枚にまとめる。トリガー: 「nuxt-items」「物品管理」「items.ippoan.org」「バーコード」「NFC」「barcode-lookup」「amazon-lookup」「useItemsSync」「sync.mtamaramu.com」「PWA」等。
+description: ippoan/nuxt-items (物品管理 PWA、Nuxt 4 + Cloudflare Workers) の構造ナビゲーション。バーコード/NFC スキャン・画像アップロード・WebSocket マルチデバイス同期 (Durable Objects) の配置と PWA/同期設定を 1 枚にまとめる。トリガー:「nuxt-items」「物品管理」「items.ippoan.org」「バーコード」「NFC」「barcode-lookup」「amazon-lookup」「useItemsSync」「sync.mtamaramu.com」「PWA」等。
 ---
 
 # nuxt-items-map — ippoan/nuxt-items 構造ナビゲーション

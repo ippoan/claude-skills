@@ -1,7 +1,7 @@
 ---
 name: egov-shinsei-sdk-map
 generated-from: egov-shinsei-sdk:66028a2c49e4983b4d4a5f7b823577d357f07230
-description: ippoan/egov-shinsei-sdk (TypeScript npm ライブラリ @ippoan/egov-shinsei-sdk、e-Gov 電子申請API v2 SDK) の構造ナビゲーション。EgovClient (全33エンドポイント)・OAuth2 PKCE・XML署名 (xmldsig: C14N/PFX/署名ブロック)・型定義・msw unit test / 手動 integration test の配置と CI 方針を 1 枚にまとめる。トリガー: 「egov-shinsei-sdk」「電子申請API」「EgovClient」「e-Gov SDK」「PKCE」「XML署名」「xmldsig」「signKousei」「申請 submitApplication」「@ippoan/egov-shinsei-sdk」等。
+description: ippoan/egov-shinsei-sdk (TypeScript npm ライブラリ @ippoan/egov-shinsei-sdk、e-Gov 電子申請API v2 SDK) の構造ナビゲーション。EgovClient (全33エンドポイント)・OAuth2 PKCE・XML署名 (xmldsig:C14N/PFX/署名ブロック)・型定義・msw unit test / 手動 integration test の配置と CI 方針を 1 枚にまとめる。トリガー:「egov-shinsei-sdk」「電子申請API」「EgovClient」「e-Gov SDK」「PKCE」「XML署名」「xmldsig」「signKousei」「申請 submitApplication」「@ippoan/egov-shinsei-sdk」等。
 ---
 
 # egov-shinsei-sdk-map — ippoan/egov-shinsei-sdk 構造ナビゲーション

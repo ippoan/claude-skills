@@ -1,7 +1,7 @@
 ---
 name: ci-dashboard-map
 generated-from: ci-dashboard:bc0514d6d54bde959f19cdad0cfd32965a79f0c6
-description: ippoan/ci-dashboard (Cloudflare Workers + Hono、CI 状況 SSR ダッシュボード + GitHub MCP server + Release Wave 機構) の構造ナビゲーション。webhook 取込 (CI_HUB DO) / cross-org issue・projects SSR / Release Wave (canary flip / compatibility 突合 / ReleaseWaveHub DO) / MCP tool 群の配置と gotcha を 1 枚にまとめる。トリガー: 「ci-dashboard」「Release Wave」「release wave」「compatibility 突合」「CIDashboardHub」「ReleaseWaveHub」「tag-release」「close 確認」「GitHub MCP」「webhooks/release-wave」「ci-dashboard.ippoan.org」等。
+description: ippoan/ci-dashboard (Cloudflare Workers + Hono、CI 状況 SSR ダッシュボード + GitHub MCP server + Release Wave 機構) の構造ナビゲーション。webhook 取込 (CI_HUB DO) / cross-org issue・projects SSR / Release Wave (canary flip / compatibility 突合 / ReleaseWaveHub DO) / MCP tool 群の配置と gotcha を 1 枚にまとめる。トリガー:「ci-dashboard」「Release Wave」「release wave」「compatibility 突合」「CIDashboardHub」「ReleaseWaveHub」「tag-release」「close 確認」「GitHub MCP」「webhooks/release-wave」「ci-dashboard.ippoan.org」等。
 ---
 
 # ci-dashboard-map — ippoan/ci-dashboard 構造ナビゲーション

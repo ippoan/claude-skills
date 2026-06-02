@@ -1,7 +1,7 @@
 ---
 name: nuxt-pwa-carins-map
 generated-from: nuxt-pwa-carins:b5814f401a26f140bf1bc90e106702636964ac5b
-description: ippoan/nuxt-pwa-carins (車検証送信 Nuxt 3 PWA / Cloudflare Workers) の構造ナビゲーション。NFC で車検証 2D コードを読み取り rust-alc-api へ送る PWA。proxy/recieve server route・auth middleware・NFC composable の配置と wrangler prod/staging・既知の drift を 1 枚にまとめる。トリガー: 「nuxt-pwa-carins」「車検証」「carins」「NFC 車検証」「share_target」「useNfcTag」「carins.ippoan.org」等。
+description: ippoan/nuxt-pwa-carins (車検証送信 Nuxt 3 PWA / Cloudflare Workers) の構造ナビゲーション。NFC で車検証 2D コードを読み取り rust-alc-api へ送る PWA。proxy/recieve server route・auth middleware・NFC composable の配置と wrangler prod/staging・既知の drift を 1 枚にまとめる。トリガー:「nuxt-pwa-carins」「車検証」「carins」「NFC 車検証」「share_target」「useNfcTag」「carins.ippoan.org」等。
 ---
 
 # nuxt-pwa-carins-map — ippoan/nuxt-pwa-carins 構造ナビゲーション

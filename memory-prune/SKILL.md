@@ -1,6 +1,6 @@
 ---
 name: memory-prune
-description: MEMORY.md が肥大化した時に handover 以外の memory file を skills や CLAUDE.md に移行してスリム化するスキル。handover_*.md は memory に残す方針 (ephemeral)。それ以外の feedback / reference / 完了 progress は workflow-bound なら既存 skill SKILL.md、universal rule なら CLAUDE.md、situational なら新規 grouped skill に振り分ける。2026 best practice (sabrina.dev / Anthropic skills launch 2025-10) ベース。トリガー: 「memory 整理」「MEMORY.md スリム化」「memory 肥大化」「feedback skill 化」「memory 削減」「memory cleanup」「200 行超えた」「25KB 超えた」「auto-memory が増えすぎ」等。/memory-prune で呼び出し可能。
+description: MEMORY.md が肥大化した時に handover 以外の memory file を skills や CLAUDE.md に移行してスリム化するスキル。handover_*.md は memory に残す方針 (ephemeral)。それ以外の feedback / reference / 完了 progress は workflow-bound なら既存 skill SKILL.md、universal rule なら CLAUDE.md、situational なら新規 grouped skill に振り分ける。2026 best practice (sabrina.dev / Anthropic skills launch 2025-10) ベース。トリガー:「memory 整理」「MEMORY.md スリム化」「memory 肥大化」「feedback skill 化」「memory 削減」「memory cleanup」「200 行超えた」「25KB 超えた」「auto-memory が増えすぎ」等。/memory-prune で呼び出し可能。
 ---
 
 # memory-prune — handover 以外を skills / CLAUDE.md に分散
