@@ -1,7 +1,7 @@
 ---
 name: ippoan-infra-map
 generated-from: claude-md:fda4a1c7a3baf02ae5c20acb9ce014434b6752ba claude-hooks:570e5bc8ec9f3e94be7c6b5b71718f3528e11386 mcp-relay-rs:732e20f03163e776e6a21c754d020cf81d4e16b0 cc-relay:1988d9032870ca232d9917d976a11230a93b16e6 mcp-cf-workers:b077c0c01de1d93127e2f5618798faf697c3caca
-description: ippoan の Claude Code on the Web (CCoW) 基盤を構成する 5 repo (claude-md / claude-hooks / mcp-relay-rs / cc-relay / mcp-cf-workers) の構造・役割・関係性を 1 枚にまとめた situational reference。どの repo に何を追加すべきか、repo 間の依存方向を即答するための地図。トリガー:「ippoan 基盤」「Claude Code 基盤」「CCoW 基盤」「5 repo 構造」「全体像」「architecture / アーキテクチャ」「cc-relay と mcp-relay-rs の違い」「どの repo に追加すべき」「claude-md と claude-hooks どっちに書く」「MCP server 全体像」「MCP 基盤マップ」「infra map」「ippoan-infra-map」等。
+description: ippoan の Claude Code on the Web (CCoW) 基盤を構成する 5 repo (claude-md / claude-hooks / mcp-relay-rs / cc-relay / mcp-cf-workers) の構造・役割・関係性を 1 枚にまとめた situational reference。どの repo に何を追加すべきか、repo 間の依存方向を即答するための地図。トリガー:「ippoan 基盤」「Claude Code 基盤」「CCoW 基盤」「5 repo 構造」「全体像」「architecture / アーキテクチャ」「cc-relay と mcp-relay-rs の違い」「どの repo に追加すべき」「claude-md と claude-hooks どっちに書く」「MCP server 全体像」「MCP 基盤マップ」「infra map」「ippoan-infra-map」「auth-worker の役割」「MCP staging=prod」「grant-via-oat」等。
 ---
 
 # ippoan CCoW 基盤マップ (5 repo)
@@ -52,6 +52,28 @@ Runtime (session 中):
 - **mcp-relay-rs** = MCP の *中身* (GitHub 操作 / file 取得 という tool を実装した binary)。
 - **cc-relay** = agent 同士を *繋ぐ* broker (Issue ベースの通知・plan 共有)。tool の中身ではなく調整役。
 - どちらも Rust workspace で `mcp(-staging).ippoan.org/mcp` の HTTP relay 上で multiplex される。
+
+### 隣接: auth-worker (認証基盤) と MCP staging = prod 運用
+
+bootstrap 5 には入らないが、**MCP スタックの認証土台**。詳細・鮮度は `auth-worker-map` が SoT。
+
+- **役割**: Cloudflare Workers (Hono) の認証サービス。OAuth フロー / JWT 発行 /
+  **MCP OAuth Provider** (DCR・authorize・token・introspect・device flow・pairing・elevate) /
+  各 SSO (Google / GitHub / LINE WORKS / e-Gov) / 組織・dashboard API。consumer
+  (alc-app / nuxt-* 等) は `@ippoan/auth-client` でこれを使う。
+- **MCP は staging = prod 運用 (最重要)**: wrangler の top-level = prod
+  (`auth.ippoan.org`)、`[env.staging]` = staging (`auth-staging.ippoan.org`) だが、
+  **MCP OAuth スタックは staging を実運用 (本番) として扱う**。prod には
+  `MCP_OAUTH_KV` を意図的に bind せず、prod の `/mcp/pair/grant-via-oat` は 503 で
+  無効化 (guardrail)。OAT→`binding_jwt` の mint は staging 経由に限定。「prod に
+  欠けている」と勘違いして足さない (Refs auth-worker#241 / #242 / #243)。
+- **CCoW との接続**: container の OAT → `POST {auth-staging}/mcp/pair/grant-via-oat`
+  で `binding_jwt` を mint (install.sh の silent bootstrap / `secret-inject` skill も
+  同経路) → これが mcp-relay-rs / cc-relay / 各 consumer MCP の認証元になる。
+
+> 既定 origin は **`AUTH_WORKER_ORIGIN`** (claude-md env、既定
+> `https://auth-staging.ippoan.org`、prod 切替は `https://auth.ippoan.org`)。
+> = この staging=prod 運用が install.sh の bootstrap 既定にそのまま効いている。
 
 ## 3. 関係性マトリクス (from → to)
 
