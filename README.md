@@ -35,6 +35,7 @@
 - **type-safe-pipeline** — 型安全なデータパイプラインの足場を作る。
 - **verify-env** — 環境変数を検証する。
 - **repo-migrate** / **package-publish-debug** — リポジトリ・パッケージ関連のその他ツール。
+- **secret-inject** — secret を GCP(SoT)/Cloudflare Secrets Store/GitHub Actions org secret に **no-leak** で投入・rotate する。値を LLM context / tool-call / log に一切載せず、CCoW の OAT から mcp.write の binding_jwt を mint して `security-inventory` の `/mcp/secret-upload` に `--data-binary` で直送する。`create_secret` MCP tool は value が tool param に載る (context leak) ので、生成系 secret はこちらを使う。
 
 スキルではない単独の markdown ノート: `backend-check.md`, `bazel-rust.md`, `compare-pdf.md`, `smart-read.md`。
 
