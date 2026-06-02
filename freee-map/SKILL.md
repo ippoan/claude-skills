@@ -1,7 +1,7 @@
 ---
 name: freee-map
 generated-from: freee:c9b23144ccc139e81985df61d8af9ad8e1e8879c
-description: ippoan/freee (法人会計を Claude Code + freee MCP 経由で行う薄い運用 repo。CLAUDE.md + hook scripts + .claude/skills/freee-* の skill 群) の構造ナビゲーション。MCP tool prefix の環境差 / 自動ログ hook / 勘定科目検索 / 銀行同期明細の消込制約・gotcha を 1 枚にまとめる。トリガー: 「freee」「freee MCP」「勘定科目検索」「未仕訳」「消込」「自動で経理」「freee_api」「会計処理」「仕訳登録」「freee ログ」「FREEE_COMPANY_ID」等。
+description: ippoan/freee (法人会計を Claude Code + freee MCP 経由で行う薄い運用 repo。CLAUDE.md + hook scripts + .claude/skills/freee-* の skill 群) の構造ナビゲーション。MCP tool prefix の環境差 / 自動ログ hook / 勘定科目検索 / 銀行同期明細の消込制約・gotcha を 1 枚にまとめる。トリガー:「freee」「freee MCP」「勘定科目検索」「未仕訳」「消込」「自動で経理」「freee_api」「会計処理」「仕訳登録」「freee ログ」「FREEE_COMPANY_ID」等。
 ---
 
 # freee-map — ippoan/freee 構造ナビゲーション

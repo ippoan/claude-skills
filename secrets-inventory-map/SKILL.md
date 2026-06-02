@@ -1,7 +1,7 @@
 ---
 name: secrets-inventory-map
 generated-from: secrets-inventory:55aa401bcd58a0619e1fd127743c2201bff83324
-description: ippoan/secrets-inventory (Cloudflare Workers + Hono、secret/service-account 監査 + 投入/rotate の MCP server) の構造ナビゲーション。GCP=SoT・メタのみ read・値は会話に載せない方針、CF Access (人間) と binding_jwt (MCP) の二重認証、secrets-inventory-gcp Cloud Run proxy 集約、stateless `/mcp` と stateful `/mcp-do` dual-path の配置と gotcha を 1 枚にまとめる。トリガー: 「secrets-inventory」「secret 監査」「create_secret」「rotate_secret」「service account 監査」「drift」「snapshot」「binding_jwt」「mcp.write scope」「GCP proxy」「secret-upload」「SecretsInventoryMcp」等。
+description: ippoan/secrets-inventory (Cloudflare Workers + Hono、secret/service-account 監査 + 投入/rotate の MCP server) の構造ナビゲーション。GCP=SoT・メタのみ read・値は会話に載せない方針、CF Access (人間) と binding_jwt (MCP) の二重認証、secrets-inventory-gcp Cloud Run proxy 集約、stateless `/mcp` と stateful `/mcp-do` dual-path の配置と gotcha を 1 枚にまとめる。トリガー:「secrets-inventory」「secret 監査」「create_secret」「rotate_secret」「service account 監査」「drift」「snapshot」「binding_jwt」「mcp.write scope」「GCP proxy」「secret-upload」「SecretsInventoryMcp」等。
 ---
 
 # secrets-inventory-map — ippoan/secrets-inventory 構造ナビゲーション

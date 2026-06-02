@@ -1,7 +1,7 @@
 ---
 name: HealthConnectReaderWorker-map
 generated-from: HealthConnectReaderWorker:50870ce9d6dd016456550e8f56b18b88e835499e
-description: ippoan/HealthConnectReaderWorker (Cloudflare Workers + Hono の健康データ収集 backend + PWA UI) の構造ナビゲーション。R2 raw 保存 / D1 突合インデックス / HC・Zones・manual・ghapi の 4 source 統合 / Google Health API webhook (DO) の配置と gotcha を 1 枚にまとめる。トリガー: 「HealthConnectReaderWorker」「hcreader」「upload-batch」「workouts 突合」「Zones」「ghapi」「Google Health」「R2 merge」「_admin/migrate」「reindex」「pairing」等。
+description: ippoan/HealthConnectReaderWorker (Cloudflare Workers + Hono の健康データ収集 backend + PWA UI) の構造ナビゲーション。R2 raw 保存 / D1 突合インデックス / HC・Zones・manual・ghapi の 4 source 統合 / Google Health API webhook (DO) の配置と gotcha を 1 枚にまとめる。トリガー:「HealthConnectReaderWorker」「hcreader」「upload-batch」「workouts 突合」「Zones」「ghapi」「Google Health」「R2 merge」「_admin/migrate」「reindex」「pairing」等。
 ---
 
 # HealthConnectReaderWorker-map — ippoan/HealthConnectReaderWorker 構造ナビゲーション

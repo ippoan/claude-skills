@@ -1,7 +1,7 @@
 ---
 name: nuxt-ichibanboshi-map
 generated-from: nuxt-ichibanboshi:7683c71ee007df8e54e02586cb7291b1bc6259c3
-description: ippoan/nuxt-ichibanboshi (一番星 売上分析ダッシュボード、Nuxt 4 SPA + Cloudflare Workers) の構造ナビゲーション。ECharts の売上チャート群 / sales API プロキシ / CF Access Service Token + auth-worker tenant gate の配置を 1 枚にまとめる。トリガー: 「ichibanboshi」「一番星」「売上分析」「ECharts」「sales API」「CF Access Service Token」「by-customer」「yoy」「ichibanboshi.ippoan.org」等。
+description: ippoan/nuxt-ichibanboshi (一番星 売上分析ダッシュボード、Nuxt 4 SPA + Cloudflare Workers) の構造ナビゲーション。ECharts の売上チャート群 / sales API プロキシ / CF Access Service Token + auth-worker tenant gate の配置を 1 枚にまとめる。トリガー:「ichibanboshi」「一番星」「売上分析」「ECharts」「sales API」「CF Access Service Token」「by-customer」「yoy」「ichibanboshi.ippoan.org」等。
 ---
 
 # nuxt-ichibanboshi-map — ippoan/nuxt-ichibanboshi 構造ナビゲーション

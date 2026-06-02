@@ -1,7 +1,7 @@
 ---
 name: ci-workflows-map
 generated-from: ci-workflows:89d74d5a6c53a108672e5b6fb60e186e5ecc3c6e
-description: ippoan/ci-workflows (ippoan/ohishi-exp org 共通の GitHub Actions reusable workflow 集) の構造ナビゲーション。frontend-ci / go-ci / lib-ci / rust-ci / cloud-run-deploy / auto-merge / branch-protection / release-wave-handler / tag-release 等の reusable workflow を種別ごとに索引化し、caller 必須 permissions・startup_failure・auto-merge dual-step・coverage 100% gate 等の gotcha を 1 枚にまとめる。トリガー: 「ci-workflows」「reusable workflow」「frontend-ci」「go-ci」「auto-merge」「branch-protection」「startup_failure」「cloud-run-deploy」「release-wave-handler」「secret-verify」「tag-release」等。
+description: ippoan/ci-workflows (ippoan/ohishi-exp org 共通の GitHub Actions reusable workflow 集) の構造ナビゲーション。frontend-ci / go-ci / lib-ci / rust-ci / cloud-run-deploy / auto-merge / branch-protection / release-wave-handler / tag-release 等の reusable workflow を種別ごとに索引化し、caller 必須 permissions・startup_failure・auto-merge dual-step・coverage 100% gate 等の gotcha を 1 枚にまとめる。トリガー:「ci-workflows」「reusable workflow」「frontend-ci」「go-ci」「auto-merge」「branch-protection」「startup_failure」「cloud-run-deploy」「release-wave-handler」「secret-verify」「tag-release」等。
 ---
 
 # ci-workflows-map — ippoan/ci-workflows 構造ナビゲーション

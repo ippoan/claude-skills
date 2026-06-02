@@ -1,6 +1,6 @@
 ---
 name: verify-env
-description: main checkout の .env / wrangler / 本番デプロイ値が整合しているかを検証する skill。Nuxt/Cloudflare Workers プロジェクトで `.env` の誤記 → dev と prod で挙動が違う、の事故を防ぐ。トリガー: 「env 確認」「verify env」「ローカル設定合ってる？」「本番と違う」「wrangler 見比べ」等。
+description: main checkout の .env / wrangler / 本番デプロイ値が整合しているかを検証する skill。Nuxt/Cloudflare Workers プロジェクトで `.env` の誤記 → dev と prod で挙動が違う、の事故を防ぐ。トリガー:「env 確認」「verify env」「ローカル設定合ってる？」「本番と違う」「wrangler 見比べ」等。
 ---
 
 # verify-env

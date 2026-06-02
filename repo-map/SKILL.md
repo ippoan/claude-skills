@@ -1,6 +1,6 @@
 ---
 name: repo-map
-description: 1 つの repo の構造ナビゲーション skill (`<repo>-map`) を作る/更新するためのメタ skill。session-start-skill-coverage hook が「この repo に対応 skill が無い」と警告した時、または既存 map が `generated-from` 鮮度警告で古いと出た時に使う。ローカル ctags (全 repo 3.8 秒・単体 0.3 秒) + ディレクトリ/CLAUDE.md 調査で「どこに何があるか」を 1 枚にまとめ、frontmatter に `generated-from: <repo>:<tree-sha>` を付けて以後の鮮度追跡を可能にする。トリガー: 「repo map 作成」「構造 skill 作って」「skill coverage 警告」「<repo> の地図」「map 更新」「generated-from 付ける」「repo-map」等。
+description: 1 つの repo の構造ナビゲーション skill (`<repo>-map`) を作る/更新するためのメタ skill。session-start-skill-coverage hook が「この repo に対応 skill が無い」と警告した時、または既存 map が `generated-from` 鮮度警告で古いと出た時に使う。ローカル ctags (全 repo 3.8 秒・単体 0.3 秒) + ディレクトリ/CLAUDE.md 調査で「どこに何があるか」を 1 枚にまとめ、frontmatter に `generated-from:<repo>:<tree-sha>` を付けて以後の鮮度追跡を可能にする。トリガー:「repo map 作成」「構造 skill 作って」「skill coverage 警告」「<repo> の地図」「map 更新」「generated-from 付ける」「repo-map」等。
 ---
 
 # repo-map — per-repo 構造 map skill を作る/更新する

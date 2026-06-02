@@ -1,7 +1,7 @@
 ---
 name: dtako-scraper-map
 generated-from: dtako-scraper:955766321fd5474d7bd906513750bf4a105fa05e
-description: ohishi-exp/dtako-scraper (Rust + Axum + chromiumoxide ヘッドレス Chrome の Dtakolog CSV スクレイパー) の構造ナビゲーション。theearth-np.com から csvdata.zip を取得 → daiun-salary API に multipart upload する Cloud Run サービスの module 配置・SSE 進捗・運用 gotcha を 1 枚にまとめる。トリガー: 「dtako-scraper」「Dtakolog」「csvdata.zip」「theearth-np」「chromiumoxide」「headless-shell」「KUDGIVT」「comp_id 並列」「daiun-salary upload」等。
+description: ohishi-exp/dtako-scraper (Rust + Axum + chromiumoxide ヘッドレス Chrome の Dtakolog CSV スクレイパー) の構造ナビゲーション。theearth-np.com から csvdata.zip を取得 → daiun-salary API に multipart upload する Cloud Run サービスの module 配置・SSE 進捗・運用 gotcha を 1 枚にまとめる。トリガー:「dtako-scraper」「Dtakolog」「csvdata.zip」「theearth-np」「chromiumoxide」「headless-shell」「KUDGIVT」「comp_id 並列」「daiun-salary upload」等。
 ---
 
 # dtako-scraper-map — ohishi-exp/dtako-scraper 構造ナビゲーション

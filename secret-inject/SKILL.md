@@ -1,6 +1,6 @@
 ---
 name: secret-inject
-description: secret を GCP(source-of-truth)/Cloudflare Secrets Store/GitHub Actions org secret に no-leak で投入・rotate するスキル。値を LLM context / tool-call JSON / log に一切載せず、shell var → curl body → worker → Secret Manager の経路だけを通す。CCoW container の OAT から mcp.write の binding_jwt を mint して security-inventory の /mcp/secret-upload に直送する。トリガー: 「secret 投入」「secret 作成」「secret rotate」「ingest secret」「Secrets Store に入れる」「GitHub org secret 作成」「値を context に載せず」「no-leak secret」「create_secret したい」「secret-inject」等。create_secret MCP tool は value が tool param に載る (= context leak) ので、生成系の secret はこのスキルを使う。
+description: secret を GCP(source-of-truth)/Cloudflare Secrets Store/GitHub Actions org secret に no-leak で投入・rotate するスキル。値を LLM context / tool-call JSON / log に一切載せず、shell var → curl body → worker → Secret Manager の経路だけを通す。CCoW container の OAT から mcp.write の binding_jwt を mint して security-inventory の /mcp/secret-upload に直送する。トリガー:「secret 投入」「secret 作成」「secret rotate」「ingest secret」「Secrets Store に入れる」「GitHub org secret 作成」「値を context に載せず」「no-leak secret」「create_secret したい」「secret-inject」等。create_secret MCP tool は value が tool param に載る (= context leak) ので、生成系の secret はこのスキルを使う。
 ---
 
 # secret-inject — no-leak で secret を 3 system に投入

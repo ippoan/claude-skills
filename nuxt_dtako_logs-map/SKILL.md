@@ -1,7 +1,7 @@
 ---
 name: nuxt_dtako_logs-map
 generated-from: nuxt_dtako_logs:cd1aa216d8d24421cf100893c106f3b65fb43baa
-description: ippoan/nuxt_dtako_logs (デジタコ運行ログ表示 Nuxt 4 PWA / Cloudflare Workers) の構造ナビゲーション。デジタルタコグラフ (dtako) の運行ログを地図 + テーブルで表示し rust-alc-api へ proxy する PWA。single page + Google Map・REST proxy・auth middleware の配置と、CLAUDE.md の大幅 drift を 1 枚にまとめる。トリガー: 「nuxt_dtako_logs」「nuxt-dtako-logs」「デジタコ」「dtako」「運行ログ」「タコグラフ」「ohishi2.mtamaramu.com」「useDtakologs」等。
+description: ippoan/nuxt_dtako_logs (デジタコ運行ログ表示 Nuxt 4 PWA / Cloudflare Workers) の構造ナビゲーション。デジタルタコグラフ (dtako) の運行ログを地図 + テーブルで表示し rust-alc-api へ proxy する PWA。single page + Google Map・REST proxy・auth middleware の配置と、CLAUDE.md の大幅 drift を 1 枚にまとめる。トリガー:「nuxt_dtako_logs」「nuxt-dtako-logs」「デジタコ」「dtako」「運行ログ」「タコグラフ」「ohishi2.mtamaramu.com」「useDtakologs」等。
 ---
 
 # nuxt_dtako_logs-map — ippoan/nuxt_dtako_logs 構造ナビゲーション

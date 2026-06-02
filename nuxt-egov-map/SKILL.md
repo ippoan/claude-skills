@@ -1,7 +1,7 @@
 ---
 name: nuxt-egov-map
 generated-from: nuxt-egov:2ad9dc78dd1c8c3b6b2af45ac97e39c27e100b94
-description: ippoan/nuxt-egov (e-Gov 電子申請 検証ツール、Nuxt 4 + Cloudflare Workers) の構造ナビゲーション。OAuth2 認証 / 申請送信 / kousei.xml 構築 / XML 署名 (xmldsig) / e-Gov API プロキシの配置を 1 枚にまとめる。トリガー: 「nuxt-egov」「egov-check」「e-Gov 電子申請」「最終確認試験」「kousei.xml」「xmldsig」「egov-shinsei-sdk」「final-test」「個別署名形式」「egov-check.ippoan.org」等。
+description: ippoan/nuxt-egov (e-Gov 電子申請 検証ツール、Nuxt 4 + Cloudflare Workers) の構造ナビゲーション。OAuth2 認証 / 申請送信 / kousei.xml 構築 / XML 署名 (xmldsig) / e-Gov API プロキシの配置を 1 枚にまとめる。トリガー:「nuxt-egov」「egov-check」「e-Gov 電子申請」「最終確認試験」「kousei.xml」「xmldsig」「egov-shinsei-sdk」「final-test」「個別署名形式」「egov-check.ippoan.org」等。
 ---
 
 # nuxt-egov-map — ippoan/nuxt-egov 構造ナビゲーション

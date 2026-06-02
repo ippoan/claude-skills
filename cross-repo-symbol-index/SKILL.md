@@ -1,6 +1,6 @@
 ---
 name: cross-repo-symbol-index
-description: CCoW で 30+ repo を跨ぐ構造把握 (どの repo の何処に symbol があるか) のやり方と、その設計検討の結論。結論はシンプル: symbol が要る時はその場でローカル ctags (全 31 repo で 3.8 秒)、保存はしない。唯一永続的に要るのは「手書き skill (ippoan-infra-map 等) が code と乖離してないか」の鮮度チェックで、これは SessionStart hook が generated-from の tree-sha 比較で行う。トリガー: 「横断 symbol 検索」「repo 跨ぎの構造」「symbol index」「どこに関数がある」「skill 鮮度」「ctags でローカル抽出」「cross-repo index」「構造把握が毎回遅い」等。
+description: CCoW で 30+ repo を跨ぐ構造把握 (どの repo の何処に symbol があるか) のやり方と、その設計検討の結論。結論はシンプル:symbol が要る時はその場でローカル ctags (全 31 repo で 3.8 秒)、保存はしない。唯一永続的に要るのは「手書き skill (ippoan-infra-map 等) が code と乖離してないか」の鮮度チェックで、これは SessionStart hook が generated-from の tree-sha 比較で行う。トリガー:「横断 symbol 検索」「repo 跨ぎの構造」「symbol index」「どこに関数がある」「skill 鮮度」「ctags でローカル抽出」「cross-repo index」「構造把握が毎回遅い」等。
 ---
 
 # cross-repo-symbol-index — 横断構造把握 (結論: ローカル ctags + skill 鮮度 hook)

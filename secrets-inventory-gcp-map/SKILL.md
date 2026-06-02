@@ -1,7 +1,7 @@
 ---
 name: secrets-inventory-gcp-map
 generated-from: secrets-inventory-gcp:0a14face8a49d1ab94c97d7202c547589200c625
-description: ippoan/secrets-inventory-gcp (Go / Cloud Run、ippoan/secrets-inventory Worker から GCP Secret Manager / IAM / CF Secrets Store / GitHub org secret を代行する薄い proxy) の構造ナビゲーション。read 系 (list-secrets / list-service-accounts) と最小 write 例外 (add-version / create-secret / sa-disable / cf・gh proxy / sync-from-gcp) の endpoint 配置・認証境界・GCP key 0 個運用・rotate guardrail を 1 枚にまとめる。トリガー: 「secrets-inventory-gcp」「list-secrets」「add-version」「create-secret」「sync-from-gcp」「sa-disable」「cf service token」「gh org secret」「X-Inventory-API-Key」「rotate-mcp」「secret rotate」等。
+description: ippoan/secrets-inventory-gcp (Go / Cloud Run、ippoan/secrets-inventory Worker から GCP Secret Manager / IAM / CF Secrets Store / GitHub org secret を代行する薄い proxy) の構造ナビゲーション。read 系 (list-secrets / list-service-accounts) と最小 write 例外 (add-version / create-secret / sa-disable / cf・gh proxy / sync-from-gcp) の endpoint 配置・認証境界・GCP key 0 個運用・rotate guardrail を 1 枚にまとめる。トリガー:「secrets-inventory-gcp」「list-secrets」「add-version」「create-secret」「sync-from-gcp」「sa-disable」「cf service token」「gh org secret」「X-Inventory-API-Key」「rotate-mcp」「secret rotate」等。
 ---
 
 # secrets-inventory-gcp-map — ippoan/secrets-inventory-gcp 構造ナビゲーション

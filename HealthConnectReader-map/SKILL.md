@@ -1,7 +1,7 @@
 ---
 name: HealthConnectReader-map
 generated-from: HealthConnectReader:336cbe112da59171cf2c9dd9f16a63059a3c5ca6
-description: ippoan/HealthConnectReader (Kotlin/Android、Health Connect 経由でトレッドミル運動データ ExerciseSession/Distance/Speed を読んで worker に upload する自分用アプリ) の構造ナビゲーション。MainActivity の権限フロー / HealthReader 読取 / WebView JS bridge / 日次 UploadWorker / 自動更新の配置と、Manifest 権限・署名・Health Connect の gotcha を 1 枚にまとめる。トリガー: 「HealthConnectReader」「hcreader」「Health Connect」「ExerciseSession」「DistanceRecord」「SpeedRecord」「dataOriginFilter」「READ_EXERCISE 権限」「UploadWorker」「APK 署名」「release.keystore」等。
+description: ippoan/HealthConnectReader (Kotlin/Android、Health Connect 経由でトレッドミル運動データ ExerciseSession/Distance/Speed を読んで worker に upload する自分用アプリ) の構造ナビゲーション。MainActivity の権限フロー / HealthReader 読取 / WebView JS bridge / 日次 UploadWorker / 自動更新の配置と、Manifest 権限・署名・Health Connect の gotcha を 1 枚にまとめる。トリガー:「HealthConnectReader」「hcreader」「Health Connect」「ExerciseSession」「DistanceRecord」「SpeedRecord」「dataOriginFilter」「READ_EXERCISE 権限」「UploadWorker」「APK 署名」「release.keystore」等。
 ---
 
 # HealthConnectReader-map — ippoan/HealthConnectReader 構造ナビゲーション

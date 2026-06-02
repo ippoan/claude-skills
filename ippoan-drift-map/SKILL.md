@@ -1,7 +1,7 @@
 ---
 name: ippoan-drift-map
 generated-from: ippoan-drift:4b825dc642cb6eb9a060e54bf8d69288fbee4904
-description: ippoan/ippoan-drift の構造ナビゲーション。現時点では commit ゼロの空 repo (初期化のみ) のためプレースホルダ。最初の commit が入ったら repo-map メタ skill で索引化する。トリガー: 「ippoan-drift」「drift repo」「ippoan-drift-map」等。
+description: ippoan/ippoan-drift の構造ナビゲーション。現時点では commit ゼロの空 repo (初期化のみ) のためプレースホルダ。最初の commit が入ったら repo-map メタ skill で索引化する。トリガー:「ippoan-drift」「drift repo」「ippoan-drift-map」等。
 ---
 
 # ippoan-drift-map — ippoan/ippoan-drift 構造ナビゲーション (プレースホルダ)

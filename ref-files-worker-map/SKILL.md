@@ -1,7 +1,7 @@
 ---
 name: ref-files-worker-map
 generated-from: ref-files-worker:9ac7504c9a88089e2d3b9c43690071efd9e36888
-description: ippoan/ref-files-worker (Cloudflare Workers + Hono、参照ファイル/spec 保管庫の HTTP+MCP facade) の構造ナビゲーション。D1 メタ (repos/folders/files/revisions, Drizzle) + R2 blob + pre-signed upload/download + bulk-upload Workflow + durable `/mcp` (DO+WS) の配置と gotcha を 1 枚にまとめる。トリガー: 「ref-files-worker」「ref-files」「folder_download_url」「file_put / file_get」「bulk_upload」「RefFilesMcp」「pre-signed upload」「ref-files.ippoan.org」「/ui CF Access」等。
+description: ippoan/ref-files-worker (Cloudflare Workers + Hono、参照ファイル/spec 保管庫の HTTP+MCP facade) の構造ナビゲーション。D1 メタ (repos/folders/files/revisions, Drizzle) + R2 blob + pre-signed upload/download + bulk-upload Workflow + durable `/mcp` (DO+WS) の配置と gotcha を 1 枚にまとめる。トリガー:「ref-files-worker」「ref-files」「folder_download_url」「file_put / file_get」「bulk_upload」「RefFilesMcp」「pre-signed upload」「ref-files.ippoan.org」「/ui CF Access」等。
 ---
 
 # ref-files-worker-map — ippoan/ref-files-worker 構造ナビゲーション
