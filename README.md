@@ -26,6 +26,36 @@
 - **cross-repo-symbol-index** — 30+ repo を跨ぐ構造把握の結論。symbol が要る時はその場でローカル ctags (全 31 repo で 3.8 秒)、保存はしない。唯一永続的に要るのは手書き skill が code と乖離してないかの鮮度チェックで、SessionStart hook が `generated-from` の tree-sha 比較で行う。横断 index を D1/CI で持つ過剰設計は撤去した経緯も記録。
 - **repo-map** — 1 つの repo の構造ナビゲーション skill (`<repo>-map`) を作る/更新するメタ skill。`session-start-skill-coverage` hook が「skill 無し」/「鮮度切れ」を警告した repo に対し、ローカル ctags + 構造調査で map を起こし `generated-from: <repo>:<tree-sha>` を付ける。
 - **auth-worker-map** — ippoan/auth-worker の構造ナビゲーション (MCP OAuth Provider / 各 SSO provider / admin・api / DO / packages / wrangler prod-staging 構成と gotcha)。`repo-map` で作った第一号の実例・雛形。
+
+### per-repo map (`<repo>-map`)
+
+`repo-map` メタ skill の手順で各 repo を索引化した構造ナビゲーション skill 群。frontmatter に `generated-from: <repo>:<tree-sha>` を持ち、`session-start-skill-coverage` hook が coverage と鮮度を点検する。基盤 5 repo (claude-md / claude-hooks / mcp-relay-rs / cc-relay / mcp-cf-workers) は `ippoan-infra-map` の `generated-from` で一括カバー。
+
+- **HealthConnectReader-map** — ippoan/HealthConnectReader (Kotlin/Android) — Health Connect の運動データ (ExerciseSession/Distance/Speed) を読んで worker に upload する自分用アプリ。MainActivity 権限フロー / WebView JS bridge / 日次 UploadWorker と Manifest 権限・署名・dataOriginFilter の gotcha。
+- **HealthConnectReaderWorker-map** — Android HealthConnectReader の WebView UI + R2/D1 backend Worker。HC・Zones・manual・ghapi 4 source の upload/merge/突合経路・Google Health 連携 DO・auth 3 経路・single-env (staging=prod) gotcha。
+- **alc-app-map** — yhonda-ohishi-alc/alc-app (業務用アルコールチェッカー / 複合 public repo)。`web/` (Nuxt 4 PWA on Workers) / `cf-alc-signaling/` (WebRTC signaling DO) / `fc1200-wasm` (秘匿) の区画、WebSerial/WebRTC/顔認証 composable、テスト方針 (v8 ignore 禁止 / mock-live 統一) の gotcha。
+- **ci-dashboard-map** — CI 状況 SSR ダッシュボード + GitHub MCP server (~46 tool) + Release Wave (canary flip/compatibility 突合) を 1 worker に同居。CIDashboardHub/ReleaseWaveHub DO・webhook 経路・close 確認フロー・KV エイリアス罠。
+- **ci-workflows-map** — org 共通 GitHub Actions reusable workflow 集。frontend/go/lib/rust-ci・cloud-run-deploy・auto-merge・branch-protection・release-wave-handler・tag-release を種別索引化し、caller 必須 permissions・auto-merge dual-step・coverage 100% gate の gotcha。
+- **claude-skills-map** — この repo 自身。skill ディレクトリ群を種別 (per-repo map / PR・CI 運用 / 構造把握メタ / secret・MCP / テスト / ドメイン) ごとにグループ索引化し、SKILL.md レイアウト規約・README 同期・scripts/.claude の位置。
+- **dtako-scraper-map** — ohishi-exp/dtako-scraper (Rust/Axum + chromiumoxide)。theearth-np.com から csvdata.zip を取得し daiun-salary へ upload する Cloud Run スクレイパー。SSE 進捗・comp_id 直列化・手動 deploy の gotcha。
+- **egov-shinsei-sdk-map** — e-Gov 電子申請API v2 の TypeScript npm ライブラリ。EgovClient (全33エンドポイント)・OAuth2 PKCE・XML署名 (xmldsig)・型定義と unit(msw)/手動 integration test の CI 方針。
+- **freee-map** — ippoan/freee (法人会計を Claude Code + freee MCP で回す薄い運用 repo)。CLAUDE.md + hook scripts + 同梱 freee-* skill を索引化し、MCP tool prefix の環境差・自動ログ hook・勘定科目検索・銀行同期明細の消込制約。
+- **nuxt-dtako-admin-map** — dtako デジタコ運行データ管理画面 (Nuxt 4 + Workers)。rust-alc-api 直 fetch frontend と R2 binding が要る Excel export server route の配置、sync HTTP 維持 (async 化 revert) 等の gotcha。
+- **nuxt-egov-map** — e-Gov 電子申請 検証ツール (Nuxt 4 + Workers)。OAuth2 (egov-shinsei-sdk) / 申請送信 / kousei.xml 構築 / xmldsig 署名 / e-Gov API プロキシ・別 Worker の配置と個別署名形式の gotcha。
+- **nuxt-ichibanboshi-map** — 一番星 売上分析ダッシュボード (Nuxt 4 SPA + Workers)。ECharts 売上チャート群 / sales API プロキシ / CF Access Service Token + auth-worker tenant gate 集約の配置。
+- **nuxt-items-map** — 物品管理 PWA (Nuxt 4 + Workers、`app/` 無し旧構成)。バーコード/NFC スキャン・画像・別 Worker (sync.mtamaramu.com DO) への WS マルチデバイス同期・LINE WORKS 自動ログインの配置。
+- **nuxt-notify-map** — 文書配信・メール受信・墨消し通知 (Nuxt 4 + Workers)。frontend pages と 2 補助 Worker (email-receiver / realtime-bus RedactBus DO) の 3 独立 deploy 単位・墨消し WS 通知の配置。
+- **nuxt-pwa-carins-map** — 自動車保険管理 PWA (Nuxt 4 + Workers)。`/api/proxy/*` → rust-alc-api carins REST proxy・auth middleware の配置。
+- **nuxt-trouble-map** — トラブル報告 PWA (Nuxt 4 + Workers)。報告フォーム / 一覧 / rust-alc-api trouble proxy・auth の配置。
+- **nuxt_dtako_logs-map** — デジタコ運行ログ表示 Nuxt 4 PWA / Workers。地図+テーブルのログビューア、`/api/proxy/*` → rust-alc-api REST proxy の配置と、CLAUDE.md の gRPC-proxy 大幅 drift (実コードは carins 同型 REST proxy)・worker 名ハイフン `nuxt-dtako-logs`・domain `ohishi2.mtamaramu.com` の gotcha。
+- **ref-files-worker-map** — 参照ファイル/spec 保管庫の HTTP+MCP facade。D1(Drizzle)+R2 blob・pre-signed upload/download・bulk-upload Workflow・durable `/mcp`(DO+WS)・`/v1`↔MCP tool 1:1・aud="*"/staging AS pin の gotcha。
+- **release-wave-gcp-map** — ippoan/release-wave-gcp (Go/Cloud Run)。Release Wave の canary flip / no-traffic deploy 切替を司る handler の構造。
+- **rust-alc-api-map** — アルコールチェッカー基盤の Rust/Axum Cargo workspace (13 domain crate + gateway/tenko/carins/dtako/trouble の複数バイナリ、PostgreSQL+RLS、Cloud Run)。crate 別ルート・monolith/per-domain 二系統・RLS/migration/Release Wave deploy 分離の gotcha。
+- **rust-ichibanboshi-map** — 一番星 SQL Server CAPE#01 の売上を tiberius で読む Rust/Axum API。sales 集計エンドポイント・売上集計ロジック (税抜カラム/請求K)・musl deploy + Cloudflare Tunnel の gotcha。
+- **secrets-inventory-map** — secret/SA 監査 + 投入/rotate MCP server (Worker)。GCP=SoT・メタのみ read・proxy 集約・CF Access(人間)/binding_jwt(MCP, mcp.write scope) 二重認証・stateless `/mcp` と stateful `/mcp-do` dual-path。
+- **secrets-inventory-gcp-map** — ippoan/secrets-inventory-gcp (Go/Cloud Run)。`secrets-inventory` Worker から GCP Secret Manager/IAM/CF・GitHub secret を代行する proxy の read endpoint と最小 write 例外・GCP key 0 個運用・rotate guardrail。
+- **ui-preview-map** — 静的 UI 成果物の ephemeral プレビュー配信基盤 (tar.gz 直 PUT→展開ガード→SQLite→別オリジン配信→WS live→TTL 削除)。PreviewDO・control/配信オリジン分離・iframe sandbox 隔離・MCP tool。
+
 - **wrangler-logs** — Cloudflare Workers のログを tail・検索する。
 - **cdp-browser** — CDP 経由でブラウザを操作する。
 - **egov-api** / **egov-spec** — e-Gov API ヘルパー。

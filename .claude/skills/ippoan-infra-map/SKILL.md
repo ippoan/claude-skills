@@ -1,5 +1,6 @@
 ---
 name: ippoan-infra-map
+generated-from: claude-md:d748a0180d1603a57ce1ce3101e404b4f9fc0a31 claude-hooks:92009eca40a94de10b98166d6e7c51e71a67d65e mcp-relay-rs:732e20f03163e776e6a21c754d020cf81d4e16b0 cc-relay:1988d9032870ca232d9917d976a11230a93b16e6 mcp-cf-workers:b077c0c01de1d93127e2f5618798faf697c3caca
 description: ippoan の Claude Code on the Web (CCoW) 基盤を構成する 5 repo (claude-md / claude-hooks / mcp-relay-rs / cc-relay / mcp-cf-workers) の構造・役割・関係性を 1 枚にまとめた situational reference。どの repo に何を追加すべきか、repo 間の依存方向を即答するための地図。トリガー:「ippoan 基盤」「Claude Code 基盤」「CCoW 基盤」「5 repo 構造」「全体像」「architecture / アーキテクチャ」「cc-relay と mcp-relay-rs の違い」「どの repo に追加すべき」「claude-md と claude-hooks どっちに書く」「MCP server 全体像」「MCP 基盤マップ」「infra map」「ippoan-infra-map」等。
 ---
 
