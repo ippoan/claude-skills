@@ -1,0 +1,52 @@
+site_name: ippoan repo マップ
+site_description: ippoan の <repo>-map スキルを人間向けに整形した構造ナビゲーション集
+site_url: https://ippoan.github.io/claude-skills/
+repo_url: https://github.com/ippoan/claude-skills
+repo_name: ippoan/claude-skills
+docs_dir: docs
+
+# docs/ は scripts/build_docs.py が SKILL.md から生成する (gitignore 済み)。
+# ローカルでは `python scripts/build_docs.py` を先に実行してから mkdocs を叩く。
+
+theme:
+  name: material
+  language: ja
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: ダークモードに切替
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: ライトモードに切替
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - navigation.sections
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - pymdownx.details
+  - pymdownx.superfences
+  - toc:
+      permalink: true
+
+plugins:
+  - search
