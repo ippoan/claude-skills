@@ -23,6 +23,7 @@
 - **memory-prune** — 古い memory エントリを整理する。
 - **large-codebase-setup** — Anthropic の "large codebases" ブログ記事の 3 本柱 (階層 CLAUDE.md / Stop hook による自己反省 / LSP 統合) をリポジトリに適用する。
 - **ippoan-infra-map** — CCoW 基盤 5 repo (claude-md / claude-hooks / mcp-relay-rs / cc-relay / mcp-cf-workers) の構造・役割・依存方向と「どの repo に何を足すか」を 1 枚にまとめた situational reference。
+- **cross-repo-symbol-index** — 30+ repo を跨ぐ symbol 検索 (どの repo の何処に何があるか) を自動化する index システムの設計。CI で LSP 抽出した symbol(開始/終了行付き) を D1 に貯め、ci-dashboard の `search_symbols` が D1 を読んで返す。`ippoan-infra-map` の手書きを生成物で置き換える。
 - **wrangler-logs** — Cloudflare Workers のログを tail・検索する。
 - **cdp-browser** — CDP 経由でブラウザを操作する。
 - **egov-api** / **egov-spec** — e-Gov API ヘルパー。
