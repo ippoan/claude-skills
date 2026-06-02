@@ -1,6 +1,6 @@
 ---
 name: cross-repo-symbol-index
-description: CCoW で 30+ repo を跨ぐ構造把握 (どの repo の何処に symbol があるか) を人力で毎 session 辿り直すコストを消すための index システムの設計。CI で LSP 抽出した symbol(開始/終了行付き) を D1 に貯め、ci-dashboard の search_symbols が D1 を読んで返す。ippoan-infra-map (手書き 5 repo) の自動化版。トリガー: 「横断 symbol 検索」「search_symbols の中身」「repo 跨ぎの構造」「symbol index」「LSP を CI で」「D1 に symbol」「どこに関数がある」「cross-repo index」「構造把握が毎回遅い」等。
+description: CCoW で 30+ repo を跨ぐ構造把握を人力で毎 session 辿り直すコストを消すための index システムの設計。CI で抽出した symbol(開始/終了行付き) を D1 に貯める。symbol 検索自体は MCP にせずローカル(smart-read/LSP)で引く (CCoW は repo clone 済み)。D1 の用途は skills/map の鮮度比較(src_hash)と人間向け view 生成。ippoan-infra-map (手書き 5 repo) の自動化版。トリガー: 「横断 symbol 検索」「search_symbols の中身」「repo 跨ぎの構造」「symbol index」「LSP を CI で」「D1 に symbol」「skills 鮮度比較」「どこに関数がある」「cross-repo index」「構造把握が毎回遅い」等。
 ---
 
 # cross-repo-symbol-index — 横断 symbol index の設計
@@ -27,14 +27,14 @@ CCoW では 30+ repo が `/home/user/<repo>` に clone されるが、各 repo �
 保管 (D1 = 共有冷蔵庫, ci-dashboard が所有)
   repos / symbols / deps / links     content-hash キー・src_hash で鮮度
 
-query (ci-dashboard MCP server)
-  既存 search_symbols の backend を D1 に差し替え
-  返り値に repo/file:start_line-end_line を含める
+symbol 検索 (= 消費)  ※ MCP にしない
+  CCoW では 30 repo が clone 済み → symbol はローカルで引くのが速い:
+    smart-read skill (symbol 単位抽出) / session 内 LSP / grep
+  MCP 往復は不要。search_symbols は MCP tool から外した (ci-dashboard#208)。
 
-消費 (CCoW / install.sh 改修不要)
-  Claude が既存 MCP search_symbols を呼ぶ → ci-dashboard が D1 をサーバ側で読む
-  → repo/file:42-67 を返す → ローカル clone のその行だけ Read
-  (D1/MCP が WHERE を返し、ローカル clone で READ する分業)
+D1 の用途 (symbol MCP query ではない)
+  (1) skills/map の鮮度比較: repos.src_hash vs 現状で「古い」を検知
+  (2) 人間向け view 生成: Worker が D1 を読んで read-only ページを配信
 ```
 
 ## なぜこの形か (設計判断の経緯)
@@ -66,16 +66,28 @@ lean な TOC (どの repo が何か) だけ markdown/user-memory に常駐、詳
   でないと正確に動かない。`git clone` はソースだけでライブラリを持ってこない。ephemeral な
   CCoW コンテナの install.sh でやると **毎 session 30 repo 分の依存解決を cold で繰り返す**。
 - **CI で生成する**: 各 repo の CI は test のために既に依存をビルド済み。その温まった状態を
-  再利用すれば LSP 抽出はほぼタダ。install.sh は **生成せず D1 から取得するだけ** (実際は
-  ci-dashboard MCP がサーバ側で D1 を読むので、install.sh 改修すら不要)。
+  再利用すれば抽出はほぼタダ。install.sh は何もしない (生成は CI、symbol 検索はローカル、
+  鮮度比較/view はサーバ側で D1 を読む)。
 
-### 4. query は新 server でなく ci-dashboard の既存 tool 格上げ
+> 注: v1 の generator は universal-ctags (toolchain 不要・多言語・start/end が取れる)。
+> 意味的な参照グラフ (links) が要るようになったら LSP に格上げする。
 
-ci-dashboard は既に org 横断 query の MCP server (`search_symbols` / `search_code` /
-`get_file_tree` / `list_org_issues`)。`search_symbols` は description で "LSP-like definition
-finder" を名乗るが、実装は GitHub `/search/code` のテキスト検索 (`"fn 関数名"` heuristic) で
-行範囲なし・誤爆あり。→ **新 server も新 tool も作らず、この既存 tool の backend を D1 に
-差し替える**だけ。
+### 4. symbol 検索は MCP にしない (ローカルで引く)
+
+当初は ci-dashboard の既存 `search_symbols` (MCP) の backend を D1 に差し替える設計
+だったが撤回した。**CCoW では 30 repo が clone 済みなので、symbol はローカル
+(`smart-read` skill / session 内 LSP / grep) で引く方が速く、MCP 往復が要らない**。
+MCP search_symbols が要るのは「clone されてない repo を引く」時だけで、全 repo
+clone 済みの CCoW ではほぼ出番が無い。→ search_symbols は MCP tool から外した
+(ci-dashboard#208)。
+
+ただし **D1 (symbol index) 自体は残す**。用途を symbol の MCP query から次に振り替えた:
+
+- **(1) skills/map の鮮度比較**: `repos.src_hash` vs 現状の差で「skills が古い」を検知
+  (前段で議論した「git 変更検知 → skills 未更新なら警告」の data source)。
+- **(2) 人間向け view 生成**: Worker が D1 を読んで org 構造の read-only ページを配信。
+
+generator (CI で抽出 → D1 push) と ingest endpoint はこの 2 用途のために残置する。
 
 ### 5. 人の merge を data path から排除
 
@@ -89,8 +101,9 @@ map を commit して PR で同期、は静的 markdown 時代の名残。生成
 |---|---|---|
 | 設計 doc (これ) | **claude-skills** | 結論と経緯 |
 | generator | **ci-workflows** | reusable workflow `symbol-index.yml`。test 後に LSP 抽出 → D1 push |
-| D1 + query | **ci-dashboard** | wrangler に D1 binding / schema / `search_symbols` の D1 化 |
-| 消費 | (変更なし) | 既存 MCP `search_symbols` を呼ぶだけ |
+| D1 (保管) + ingest | **ci-dashboard** | wrangler に D1 binding / schema / `POST /internal/symbol-index`。用途は鮮度比較 + view (symbol の MCP query ではない) |
+| symbol 検索 | **ローカル** | `smart-read` skill / session 内 LSP / grep。MCP にしない |
+| 鮮度比較 / view | **ci-dashboard** (今後) | `repos.src_hash` で skills 鮮度判定 / D1 を読む read-only ページ |
 
 関連 issue: claude-skills#10 / ci-dashboard#205 / ci-workflows#90
 
