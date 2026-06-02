@@ -1,6 +1,6 @@
 ---
 name: ippoan-infra-map
-generated-from: claude-md:d748a0180d1603a57ce1ce3101e404b4f9fc0a31 claude-hooks:92009eca40a94de10b98166d6e7c51e71a67d65e mcp-relay-rs:732e20f03163e776e6a21c754d020cf81d4e16b0 cc-relay:1988d9032870ca232d9917d976a11230a93b16e6 mcp-cf-workers:b077c0c01de1d93127e2f5618798faf697c3caca
+generated-from: claude-md:fda4a1c7a3baf02ae5c20acb9ce014434b6752ba claude-hooks:570e5bc8ec9f3e94be7c6b5b71718f3528e11386 mcp-relay-rs:732e20f03163e776e6a21c754d020cf81d4e16b0 cc-relay:1988d9032870ca232d9917d976a11230a93b16e6 mcp-cf-workers:b077c0c01de1d93127e2f5618798faf697c3caca
 description: ippoan の Claude Code on the Web (CCoW) 基盤を構成する 5 repo (claude-md / claude-hooks / mcp-relay-rs / cc-relay / mcp-cf-workers) の構造・役割・関係性を 1 枚にまとめた situational reference。どの repo に何を追加すべきか、repo 間の依存方向を即答するための地図。トリガー:「ippoan 基盤」「Claude Code 基盤」「CCoW 基盤」「5 repo 構造」「全体像」「architecture / アーキテクチャ」「cc-relay と mcp-relay-rs の違い」「どの repo に追加すべき」「claude-md と claude-hooks どっちに書く」「MCP server 全体像」「MCP 基盤マップ」「infra map」「ippoan-infra-map」等。
 ---
 
@@ -90,7 +90,9 @@ Runtime (session 中):
 │      → ⑤ mcp-cf-workers  (src/ に factory / auth helper)
 │
 └─ 「skill」を足したい (この repo: claude-skills)
-       → .claude/skills/<name>/SKILL.md  (新規は .claude/skills/ 配下が推奨)
+       → <name>/SKILL.md  ※置き場が 2 系統に割れている (repo 直下が大多数 /
+         `.claude/skills/` に 5 個)。どちらも install で symlink され動作は同じ。
+         統一方針は未確定。詳細は claude-skills の `CLAUDE.md`
 ```
 
 ### claude-md と claude-hooks、どっちに書く?
@@ -104,7 +106,24 @@ Runtime (session 中):
 
 判断軸: 「**動作 (script の実体)** は claude-hooks、**配線 (どう登録・配置するか)** は claude-md」。
 
-## 5. 関連メモ
+## 5. install.sh / 配線を変える時の判断基準 (claude-md)
+
+「install.sh に何をどう足すか」の判断基準は **claude-md の `CLAUDE.md` / `README.md`**
+に集約されている (毎回 grep せず、まずここを見る → 詳細はそのリンク先)。
+
+| やりたい / 詰まり | 判断基準 (要点) | 出所 (claude-md) |
+|---|---|---|
+| **hook を 1 本足す** | `.claude/install.sh` の `HOOK_SCRIPTS=()` に追加 **＋** `HOOK_SHAS=` に同 name 行 (sha は dummy) **＋** `settings.json.template` の `hooks.<event>` 登録、の **3 点 1 セット** | `CLAUDE.md` 「install.sh を編集する」 |
+| **版 (sha) を手で書くか** | **書かない**。`INSTALL_SH_VERSION` / `HOOK_SHAS` は `stamp-install-sh-version.yml` が main push で自動 rewrite。手で触ると衝突 | `CLAUDE.md` 「やってはいけないこと」 |
+| **hook 修正が既存 env に届くか** | HOOK_SHAS rewrite → install.sh 自身の sha も変わる → `session-start-refresh-installer.sh` が再 fetch・再実行して届く (PR #17 の肝) | `CLAUDE.md` 「hook-only 変更が届く流れ」 |
+| **いつ反映されるか** | `hooks/*.sh` の中身修正＝**即時**。settings.json の `permissions` / `hooks` 登録・`~/.claude.json` の `mcpServers` 追加＝**次 session** | `CLAUDE.md` 「1 session 遅延」表 |
+| **env override で挙動を変える** | `SKIP_*` / `CLAUDE_HOOKS_*` / `CLAUDE_SKILL_COVERAGE_IGNORE` / `AUTH_WORKER_ORIGIN` 等 (既定値つき一覧) | `README.md` env override 表 |
+| **壊さず検証したい** | `bash -n .claude/install.sh` / `bash -n .claude/hooks/*.sh`、`SKIP_SETTINGS=1 SKIP_HOOK=1 SKIP_CC_RELAY=1 SKIP_MCP=1 bash .claude/install.sh` で副作用 0 dry-run | `CLAUDE.md` 「ビルド / テスト / lint」 |
+
+> 原則: **判断基準そのもの (詳細) は claude-md 側が SoT**。この表は「どの判断が
+> claude-md のどこに書いてあるか」の索引で、捜索時間と記憶依存を減らすためのもの。
+
+## 6. 関連メモ
 
 - **policy は project memory (各 repo の `CLAUDE.md` = `CLAUDE.md.template` 派生) に書く** —
   auto-merge / `Refs #N` / branch protection 等。user memory には書かない (project memory が優先)。

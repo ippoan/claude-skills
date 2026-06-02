@@ -68,13 +68,42 @@ generated-from: claude-md:<tree-sha> claude-hooks:<tree-sha> mcp-relay-rs:<tree-
 
 `tree-sha` は生成時の `git -C /home/user/<repo> rev-parse HEAD^{tree}`。
 
-SessionStart hook (claude-hooks `session-start-stale-skills-check.sh` 内) が
+SessionStart hook (claude-hooks **`session-start-skill-coverage.sh`**) が
 `~/.claude/skills/*/SKILL.md` を走査し、`generated-from` の各 repo について現在の
-tree-sha と比較。ズレてたら「この skill は <repo> の変化に追従していない」と
-additionalContext で警告する。`generated-from` を持たない skill は対象外 (opt-in)。
+tree-sha と比較。ズレてたら「この skill は <repo> の変化に追従していない」(stale)、
+`generated-from` のどこにも載っていない attached repo は「対応 skill 無し」(uncovered)
+として additionalContext で警告する。`generated-from` を持たない skill は対象外 (opt-in)。
+
+> 別名注意: `session-start-stale-skills-check.sh` は**別 hook** (sources clone が
+> remote から古くないかを見る bootstrap 鮮度チェック)。code↔map の鮮度はこの
+> `skill-coverage.sh` の方。
 
 > 鮮度判定に ctags は不要 — tree-sha の比較だけ。symbol が実際に要る時に初めて
 > ローカル ctags する。
+
+### どのロジックがどこに居るか (動作=claude-hooks / 配線=claude-md)
+
+`ippoan-infra-map` の「動作は claude-hooks、配線は claude-md」ルールに従う:
+
+| 何 | 置き場 |
+|---|---|
+| coverage/鮮度の**判定ロジック本体** | **claude-hooks** `session-start-skill-coverage.sh` |
+| hook の **SessionStart 登録 + env** | **claude-md** `.claude/settings.json.template` |
+| `<repo>-map` / `ippoan-infra-map` (map 実体) | **claude-skills** |
+
+### 運用上の除外と空 repo の扱い
+
+- **claude-skills 自身は coverage 対象から除外** (`CLAUDE_SKILL_COVERAGE_IGNORE=claude-skills`、
+  claude-md の settings env)。理由: claude-skills は map の置き場そのもので、追従すべき
+  外部 code を持たない。自分自身を map した `claude-skills-map` は repo が変わる度に
+  無意味に stale 化する (自分のコミット後 tree-sha を自分に書けない鶏卵) → ノイズなので
+  既定で外す。**「code→map の鮮度」は外部 code repo にだけ意味がある**、が原則。
+- **空 repo (commit ゼロ・HEAD 無し)** は `<repo>-map` の `generated-from` に git の
+  **empty-tree-sha** (`4b825dc6…`) を入れた placeholder を置く (例: `ippoan-drift-map`)。
+  hook 側は `git rev-parse --verify -q 'HEAD^{tree}'` で HEAD 無しを `cur=""` 扱いにし
+  鮮度比較をスキップ → covered かつ鮮度 OK。最初の commit が入ると cur が実 tree-sha に
+  なり empty-tree-sha と不一致 → stale → `repo-map` で実体化を促す。
+  (素朴な `rev-parse 'HEAD^{tree}'` は失敗時に literal を stdout に出し stale 誤検出するので不可。)
 
 ## 関連 skill
 
