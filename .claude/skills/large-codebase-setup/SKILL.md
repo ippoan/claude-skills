@@ -1,6 +1,6 @@
 ---
 name: large-codebase-setup
-description: 大規模コードベース (数十万行以上、multi-language) で Claude Code を最大効率で動かすための初期セットアップ skill。Anthropic 公式 blog "How Claude Code works in large codebases" (2026) ベース。階層 CLAUDE.md / Stop hook による自己反省 / LSP 統合の 3 本柱で navigation 精度と context 効率を底上げする。トリガー: 「大規模 codebase」「monorepo セットアップ」「CLAUDE.md 階層化」「stop hook 設定」「LSP 統合」「symbol navigation」「navigation 精度」「large codebase best practices」「multi-language repo セットアップ」「Claude Code 効率化」等。
+description: 大規模コードベース (数十万行以上、multi-language) で Claude Code を最大効率で動かすための初期セットアップ skill。Anthropic 公式 blog "How Claude Code works in large codebases" (2026) ベース。階層 CLAUDE.md / Stop hook による自己反省 / LSP 統合の 3 本柱で navigation 精度と context 効率を底上げする。トリガー:「大規模 codebase」「monorepo セットアップ」「CLAUDE.md 階層化」「stop hook 設定」「LSP 統合」「symbol navigation」「navigation 精度」「large codebase best practices」「multi-language repo セットアップ」「Claude Code 効率化」等。
 ---
 
 # large-codebase-setup — 大規模コードベース向け Claude Code 初期セットアップ
