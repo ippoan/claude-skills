@@ -41,7 +41,12 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-AUTH_ORIGIN="${SECRET_AUTH_ORIGIN:-https://auth.ippoan.org}"
+# default は staging。この org の MCP スタックは staging を実運用として扱い
+# (cc-relay → mcp-staging、ci-dashboard staging-only)、prod auth.ippoan.org は
+# 現状 `MCP_OAUTH_KV not bound` で grant が 503。prod security-inventory は
+# staging-minted JWT を introspect 受理するので staging mint で投入は成立する。
+# prod auth が復旧したら SECRET_AUTH_ORIGIN=https://auth.ippoan.org で上書き可。
+AUTH_ORIGIN="${SECRET_AUTH_ORIGIN:-https://auth-staging.ippoan.org}"
 UPLOAD_ORIGIN="${SECRET_UPLOAD_ORIGIN:-https://security-inventory.ippoan.org}"
 OAT_FILE="${SECRET_OAT_FILE:-/home/claude/.claude/remote/.oauth_token}"
 
