@@ -7,6 +7,17 @@ name: auto-merge
 #   - General → "Allow auto-merge" is ON
 #   - Branches → main protection requires the `ci / shellcheck` check
 #     from test.yml. Without that, this would merge instantly.
+#
+# Why TAG_RELEASE_PAT (org secret) instead of GITHUB_TOKEN:
+#   GitHub suppresses workflow runs for events triggered by GITHUB_TOKEN
+#   (docs: "events triggered by the GITHUB_TOKEN will not create a new
+#   workflow run", except workflow_dispatch / repository_dispatch). So a PR
+#   auto-merged under GITHUB_TOKEN pushes to main as github-actions[bot] and
+#   that push does NOT fire pages.yml / test.yml → the Pages site never
+#   auto-deploys (had to dispatch manually). Enabling auto-merge with a
+#   user-scoped PAT makes the eventual merge push attributed to a real user,
+#   so the on:push workflows run normally. Falls back to GITHUB_TOKEN if the
+#   PAT isn't present (auto-merge still works, just without downstream runs).
 
 on:
   pull_request_target:
@@ -23,6 +34,6 @@ jobs:
     steps:
       - name: Enable auto-merge (squash)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.TAG_RELEASE_PAT || secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: gh pr merge --auto --squash "$PR_URL"
