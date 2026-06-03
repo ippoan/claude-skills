@@ -10,6 +10,22 @@ on:
       - 'scripts/build_docs.py'
       - 'requirements-docs.txt'
       - '.github/workflows/pages.yml'
+  # auto-merge.yml は GITHUB_TOKEN で PR を merge する。GITHUB_TOKEN による
+  # main への push は再帰防止で新しい workflow run を起動しない → 上の
+  # `push` トリガーが auto-merge 経由では発火せず Pages が古いまま残る。
+  # PR merge 完了を pull_request_target: closed (merged) で拾い直して deploy する。
+  # code は既に main に入っているので build job の merged==true gate で安全。
+  # (paths は push トリガーと同一。GitHub Actions は YAML anchor 非対応のため明示)
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+    paths:
+      - '**/SKILL.md'
+      - 'README.md'
+      - 'mkdocs.yml'
+      - 'scripts/build_docs.py'
+      - 'requirements-docs.txt'
+      - '.github/workflows/pages.yml'
   workflow_dispatch: {}
 
 permissions:
@@ -24,9 +40,16 @@ concurrency:
 
 jobs:
   build:
+    # pull_request_target は merge されていない close でも発火するので、
+    # merged==true の時だけ deploy する。push / workflow_dispatch は素通り。
+    if: github.event_name != 'pull_request_target' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # push / dispatch は trigger 時点の main。pull_request_target は
+          # base ブランチ (merge 済み main) の HEAD を明示的に取り直す。
+          ref: ${{ github.ref }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
