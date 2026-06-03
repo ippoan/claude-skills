@@ -147,24 +147,74 @@ def render_page(fm: dict, body: str) -> str:
     return "\n\n".join(p for p in parts if p).rstrip() + "\n"
 
 
+# repo の「役割 (業務ドメイン / 機能)」でグルーピングする。name → カテゴリ。
+ROLE = {
+    # 開発・CCoW 基盤
+    "ippoan-infra-map": "開発・CCoW 基盤",
+    "claude-skills-map": "開発・CCoW 基盤",
+    "ref-files-worker-map": "開発・CCoW 基盤",
+    "ui-preview-map": "開発・CCoW 基盤",
+    # CI/CD・リリース
+    "ci-workflows-map": "CI/CD・リリース",
+    "ci-dashboard-map": "CI/CD・リリース",
+    "release-wave-gcp-map": "CI/CD・リリース",
+    # 認証・Secret 管理
+    "auth-worker-map": "認証・Secret 管理",
+    "secrets-inventory-map": "認証・Secret 管理",
+    "secrets-inventory-gcp-map": "認証・Secret 管理",
+    # 運行管理・アルコールチェック
+    "rust-alc-api-map": "運行管理・アルコールチェック",
+    "alc-app-map": "運行管理・アルコールチェック",
+    "nuxt-pwa-carins-map": "運行管理・アルコールチェック",
+    "nuxt-trouble-map": "運行管理・アルコールチェック",
+    "nuxt-notify-map": "運行管理・アルコールチェック",
+    "nuxt_dtako_logs-map": "運行管理・アルコールチェック",
+    "nuxt-dtako-admin-map": "運行管理・アルコールチェック",
+    "dtako-scraper-map": "運行管理・アルコールチェック",
+    # 売上分析 (一番星)
+    "rust-ichibanboshi-map": "売上分析 (一番星)",
+    "nuxt-ichibanboshi-map": "売上分析 (一番星)",
+    # e-Gov 電子申請
+    "egov-shinsei-sdk-map": "e-Gov 電子申請",
+    "nuxt-egov-map": "e-Gov 電子申請",
+    # ヘルスケア
+    "HealthConnectReader-map": "ヘルスケア",
+    "HealthConnectReaderWorker-map": "ヘルスケア",
+    # その他業務
+    "freee-map": "その他業務 (会計 / 物品)",
+    "nuxt-items-map": "その他業務 (会計 / 物品)",
+    # 未分類
+    "ippoan-drift-map": "未分類 / プレースホルダ",
+}
+DEFAULT_ROLE = "その他"
+
+
 def category(name: str) -> str:
-    if name == "ippoan-infra-map":
-        return "基盤 / メタ"
-    if name.startswith("nuxt"):
-        return "フロントエンド (Nuxt / Workers)"
-    return "バックエンド / Worker / ライブラリ"
+    return ROLE.get(name, DEFAULT_ROLE)
 
 
 CAT_ORDER = [
-    "基盤 / メタ",
-    "バックエンド / Worker / ライブラリ",
-    "フロントエンド (Nuxt / Workers)",
+    "開発・CCoW 基盤",
+    "CI/CD・リリース",
+    "認証・Secret 管理",
+    "運行管理・アルコールチェック",
+    "売上分析 (一番星)",
+    "e-Gov 電子申請",
+    "ヘルスケア",
+    "その他業務 (会計 / 物品)",
+    "未分類 / プレースホルダ",
 ]
 
 CAT_ICON = {
-    "基盤 / メタ": ":material-sitemap:",
-    "バックエンド / Worker / ライブラリ": ":material-server-network:",
-    "フロントエンド (Nuxt / Workers)": ":material-vuejs:",
+    "開発・CCoW 基盤": ":material-cog-outline:",
+    "CI/CD・リリース": ":material-rocket-launch-outline:",
+    "認証・Secret 管理": ":material-shield-key-outline:",
+    "運行管理・アルコールチェック": ":material-truck-outline:",
+    "売上分析 (一番星)": ":material-chart-line:",
+    "e-Gov 電子申請": ":material-file-document-outline:",
+    "ヘルスケア": ":material-heart-pulse:",
+    "その他業務 (会計 / 物品)": ":material-briefcase-outline:",
+    "未分類 / プレースホルダ": ":material-help-circle-outline:",
 }
 
 
