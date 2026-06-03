@@ -217,6 +217,48 @@ CAT_ICON = {
     "未分類 / プレースホルダ": ":material-help-circle-outline:",
 }
 
+# tree 表示用の Unicode 絵文字 (<pre> 内では :material-...: shortcode が
+# 展開されないため直接の絵文字を使う)。
+CAT_EMOJI = {
+    "開発・CCoW 基盤": "⚙️",
+    "CI/CD・リリース": "🚀",
+    "認証・Secret 管理": "🔑",
+    "運行管理・アルコールチェック": "🚚",
+    "売上分析 (一番星)": "📈",
+    "e-Gov 電子申請": "📄",
+    "ヘルスケア": "🩺",
+    "その他業務 (会計 / 物品)": "💼",
+    "未分類 / プレースホルダ": "❓",
+}
+
+
+def _short(summary: str, limit: int = 48) -> str:
+    """tree の右に出す 1 行概要 (最初の文 or limit 字で切る)。"""
+    desc = summary.split("。")[0].strip()
+    return desc[:limit] + "…" if len(desc) > limit else desc
+
+
+def render_tree(by_cat: dict, cats: list) -> str:
+    """カテゴリ → repo を ├─ └─ の罫線ツリーで描く (<pre> + リンク + 概要)。"""
+    names = [e["name"] for es in by_cat.values() for e in es]
+    width = max((len(n) for n in names), default=0)
+    lines = ['<pre class="repo-tree">', "ippoan repo マップ"]
+    for ci, cat in enumerate(cats):
+        clast = ci == len(cats) - 1
+        emoji = CAT_EMOJI.get(cat, "")
+        lines.append(f'{"└─" if clast else "├─"} {emoji} {cat}')
+        cont = "   " if clast else "│  "
+        entries = sorted(by_cat[cat], key=lambda x: x["name"])
+        for ei, e in enumerate(entries):
+            elast = ei == len(entries) - 1
+            branch = "└─" if elast else "├─"
+            name = e["name"]
+            link = f'<a href="maps/{name}.html">{name}</a>'
+            pad = " " * (width - len(name))
+            lines.append(f'{cont}{branch} {link}{pad}  <span class="t-desc">{_short(e["summary"])}</span>')
+    lines.append("</pre>")
+    return "\n".join(lines)
+
 
 def card_item(e: dict) -> str:
     """Material の grid cards 1 枚分の markdown を返す。"""
@@ -277,11 +319,7 @@ def main() -> None:
         "各ページには対象 repo へのリンクと追従コミットのバッジが付く。",
         "",
     ]
-    for cat in cats:
-        out += [f"## {cat}", "", '<div class="grid cards" markdown>', ""]
-        for e in sorted(by_cat[cat], key=lambda x: x["name"]):
-            out += [card_item(e), ""]
-        out += ["</div>", ""]
+    out += ["## 役割マップ", "", render_tree(by_cat, cats), ""]
     DOCS.joinpath("index.md").write_text("\n".join(out) + "\n", encoding="utf-8")
 
     # 左ナビ (mkdocs-literate-nav): カテゴリでグルーピング
