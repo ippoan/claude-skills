@@ -8,6 +8,7 @@ Source of Truth は各 `<repo>-map/SKILL.md` (+ `.claude/skills/ippoan-infra-map
 """
 from __future__ import annotations
 
+import html
 import re
 from pathlib import Path
 
@@ -232,10 +233,25 @@ CAT_EMOJI = {
 }
 
 
-def _short(summary: str, limit: int = 48) -> str:
-    """tree の右に出す 1 行概要 (最初の文 or limit 字で切る)。"""
-    desc = summary.split("。")[0].strip()
-    return desc[:limit] + "…" if len(desc) > limit else desc
+def _strip_md(s: str) -> str:
+    """<pre> ツリー内はそのままテキスト表示されるので inline markdown 記法を
+    剥がしてプレーン化する (`**bold**` / `*em*` / `` `code` `` / `[t](u)`)。"""
+    s = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", s)  # [t](u) -> t
+    s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)         # **bold** -> bold
+    s = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"\1", s)  # *em* -> em
+    s = s.replace("`", "").replace("**", "")
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _short(summary: str, limit: int = 60) -> str:
+    """tree の右に出す 1 行概要 (最初の文 or limit 字で切る)。
+
+    markdown を剥がした上で HTML エスケープする (`<pre>` に直接差し込むため、
+    剥がし後に残る `<name>` 等が tag 化 / `&` が entity 化するのを防ぐ)。"""
+    desc = _strip_md(summary.split("。")[0])
+    if len(desc) > limit:
+        desc = desc[:limit].rstrip() + "…"
+    return html.escape(desc)
 
 
 def render_tree(by_cat: dict, cats: list) -> str:
