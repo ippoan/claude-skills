@@ -232,9 +232,17 @@ CAT_EMOJI = {
 }
 
 
-def _short(summary: str, limit: int = 48) -> str:
-    """tree の右に出す 1 行概要 (最初の文 or limit 字で切る)。"""
-    desc = summary.split("。")[0].strip()
+def _plain(s: str) -> str:
+    """summary から markdown 装飾 (bold / code / link) を除去する。"""
+    s = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", s)
+    s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)
+    s = re.sub(r"`([^`]+)`", r"\1", s)
+    return s.replace("**", "").replace("`", "").strip()
+
+
+def _short(summary: str, limit: int = 60) -> str:
+    """tree の右に出す 1 行概要 (markdown 除去 + 最初の文 / limit 字)。"""
+    desc = _plain(summary).split("。")[0].strip()
     return desc[:limit] + "…" if len(desc) > limit else desc
 
 
