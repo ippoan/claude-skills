@@ -68,6 +68,35 @@ Wave (canary release オーケストレータ)**。`src/index.ts` が全 route �
 - **prod/staging dual-env**: top-level + `[env.staging]`。staging が custom domain `ci-dashboard.ippoan.org` を持つ (= staging を実運用扱い)。`TAGLESS_REPOS` var で「tag を切らない repo は PR merge を release 扱い」。
 - **close キーワード規約**: PR は `Refs #N` のみ (`Closes/Fixes/Resolves` 禁止)。release tag 後にこの dashboard の close 確認 UI / `close_issue` MCP tool で目視 close。
 
+## トラブルシューティング Q&A (運用で踏んだやつ — Refs ci-dashboard#217)
+
+**Q: `/issues` に特定 repo の open issue が出ない (section ごと消える)**
+`/issues` は GitHub 直読みでなく KV cache (`issue:*`) を `issue-cache.ts` の
+`reconcileIssues` が埋める。現在は **full open snapshot 方式** (毎回 `state:open`
+全取得 → GitHub の open 集合に無い KV entry を evict + 現 open を全 upsert)。
+旧 warm-delta 方式 (`state:all + updated:>=watermark`) は per_page:100 truncation
+や KV write 欠落で一度漏れた open issue を再 update まで復活できず、更新の止まった
+repo の section が丸ごと消えた (#218 で full snapshot に修正)。MCP の
+`list_org_issues` は GitHub 直叩きなので出る・`/issues` だけ欠ける、が切り分けの目印。
+
+**Q: `/releases` に repo が出ない (一部 repo しか出ない)**
+watched = hub(CI run) + direct-push allowlist + **`TAGLESS_REPOS`** の和で、release
+候補 (未 close の `Refs #N` を持つ merged PR、または semver tag) がある repo だけ
+出す。**tag を切らない repo は `TAGLESS_REPOS` に登録しないと `useSynthetic=false`
+で synthetic block を作らず、tag も無いので何も出ない** (`releases-page.ts`
+`loadRepoView`)。`TAGLESS_REPOS` は `wrangler.jsonc` の **`env.staging.vars`** 側
+(top-level でなく staging が実運用 env)。skill / reusable workflow / hooks 等
+tag-less な repo はここに追加する (#217: claude-skills/ci-workflows/ref-files-worker
+/claude-hooks を追加)。
+
+**Q: ci-dashboard の runtime log を MCP で見たい**
+Cloudflare observability MCP `query_worker_observability` (`service=ci-dashboard-staging`)。
+events view は `$metadata.message` までで、`console.log(JSON.stringify({msg,...}))` の
+custom field (`reconcile.fetched`, `cachedRepos.N` 等) は展開されない →
+`observability_keys` で key を確認し `observability_values` で値を引く。MCP 接続は
+**session 起動時に固定**されるので、認証/endpoint を更新したら再連携 (新 session か
+MCP reconnect) しないと `Cloudflare API request failed` のまま。
+
 ## CCoW / CI から見た立ち位置
 
 - **org 横断 issue / CI / release のハブ**。`check-issue` skill が `list_org_issues` を、release 系 skill が release-wave tool を consume。
