@@ -11,6 +11,7 @@
 `<repo>-map` スキル群を人間向けに整形した閲覧サイトを GitHub Pages で配信する: **<https://ippoan.github.io/claude-skills/>**
 
 - 各ページの Source of Truth は repo 内の `<repo>-map/SKILL.md` (+ `.claude/skills/ippoan-infra-map`)。`main` への push で [`pages.yml`](.github/workflows/pages.yml) が [`scripts/build_docs.py`](scripts/build_docs.py) → `mkdocs build` を回して自動再デプロイする (二重メンテ不要)。
+- 自動再デプロイは [`auto-merge.yml`](.github/workflows/auto-merge.yml) が **org PAT (`TAG_RELEASE_PAT`)** で PR を merge することに依存する。`GITHUB_TOKEN` で merge すると GitHub の再帰防止 (GITHUB_TOKEN 起因イベントは `workflow_dispatch` / `repository_dispatch` 以外 run を作らない) で merge の push が `pages.yml` を起動しないため、実ユーザー帰属の PAT で merge して `on: push` を発火させている。PAT 不在時は手動 `workflow_dispatch` で再デプロイする。
 - frontmatter の `generated-from` を「対象 repo + 追従コミット」バッジに、`description` (トリガー語) は折りたたみに変換する。
 - ローカルプレビュー: `pip install -r requirements-docs.txt && python scripts/build_docs.py && mkdocs serve`
 
