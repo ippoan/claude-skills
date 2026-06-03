@@ -161,6 +161,31 @@ CAT_ORDER = [
     "フロントエンド (Nuxt / Workers)",
 ]
 
+CAT_ICON = {
+    "基盤 / メタ": ":material-sitemap:",
+    "バックエンド / Worker / ライブラリ": ":material-server-network:",
+    "フロントエンド (Nuxt / Workers)": ":material-vuejs:",
+}
+
+
+def card_item(e: dict) -> str:
+    """Material の grid cards 1 枚分の markdown を返す。"""
+    icon = CAT_ICON.get(e["cat"], ":material-map-marker:")
+    repos = " · ".join(
+        f"[:octicons-mark-github-16: {o}/{r}](https://github.com/{o}/{r})"
+        for o, r, _ in e["targets"]
+    )
+    lines = [
+        f'-   {icon}{{ .lg .middle }} __[{e["name"]}](maps/{e["name"]}.md)__',
+        "",
+        "    ---",
+        "",
+        f'    {e["summary"]}',
+    ]
+    if repos:
+        lines += ["", f"    {repos}"]
+    return "\n".join(lines)
+
 
 def main() -> None:
     MAPS_OUT.mkdir(parents=True, exist_ok=True)
@@ -178,6 +203,14 @@ def main() -> None:
             }
         )
 
+    by_cat: dict[str, list] = {}
+    for e in entries:
+        by_cat.setdefault(e["cat"], []).append(e)
+    cats = [c for c in CAT_ORDER if c in by_cat] + [
+        c for c in by_cat if c not in CAT_ORDER
+    ]
+
+    # トップページ: カテゴリごとに grid cards
     out: list[str] = [
         "# ippoan リポジトリ構造マップ",
         "",
@@ -187,32 +220,29 @@ def main() -> None:
         "",
         "各ページの Source of Truth は "
         "[`ippoan/claude-skills`](https://github.com/ippoan/claude-skills) の "
-        "`<repo>-map/SKILL.md`。`main` への push で自動再生成・再デプロイされる "
-        "(二重メンテ無し)。",
+        "`<repo>-map/SKILL.md`。`main` への push で自動再生成・再デプロイされる。",
         "",
-        f"収録マップ: **{len(entries)} 枚**",
+        f'!!! tip "収録マップ {len(entries)} 枚"',
+        "    左のナビ (カテゴリ別) ・カード・上部の検索からどうぞ。"
+        "各ページには対象 repo へのリンクと追従コミットのバッジが付く。",
         "",
-    ]
-    by_cat: dict[str, list] = {}
-    for e in entries:
-        by_cat.setdefault(e["cat"], []).append(e)
-    cats = [c for c in CAT_ORDER if c in by_cat] + [
-        c for c in by_cat if c not in CAT_ORDER
     ]
     for cat in cats:
-        out += [f"## {cat}", "", "| マップ | リポジトリ | 概要 |", "|---|---|---|"]
+        out += [f"## {cat}", "", '<div class="grid cards" markdown>', ""]
         for e in sorted(by_cat[cat], key=lambda x: x["name"]):
-            repos = (
-                "<br>".join(
-                    f"[{o}/{r}](https://github.com/{o}/{r})" for o, r, _ in e["targets"]
-                )
-                or "—"
-            )
-            summ = e["summary"].replace("|", "\\|")
-            out.append(f"| [{e['name']}](maps/{e['name']}.md) | {repos} | {summ} |")
-        out.append("")
+            out += [card_item(e), ""]
+        out += ["</div>", ""]
     DOCS.joinpath("index.md").write_text("\n".join(out) + "\n", encoding="utf-8")
-    print(f"generated {len(entries)} map pages -> {MAPS_OUT}")
+
+    # 左ナビ (mkdocs-literate-nav): カテゴリでグルーピング
+    sm: list[str] = ["* [ホーム](index.md)"]
+    for cat in cats:
+        sm.append(f"* {cat}")
+        for e in sorted(by_cat[cat], key=lambda x: x["name"]):
+            sm.append(f"    * [{e['name']}](maps/{e['name']}.md)")
+    DOCS.joinpath("SUMMARY.md").write_text("\n".join(sm) + "\n", encoding="utf-8")
+
+    print(f"generated {len(entries)} pages + index + SUMMARY -> {DOCS}")
 
 
 if __name__ == "__main__":

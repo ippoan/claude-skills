@@ -5,12 +5,20 @@ repo_url: https://github.com/ippoan/claude-skills
 repo_name: ippoan/claude-skills
 docs_dir: docs
 
+# 各ページを <path>.html の flat file で出す (ディレクトリ URL を使わない)。
+# ui-preview の DO 配信は sub-directory の trailing-slash → index.html 自動解決を
+# しないため、これが無いと preview で全リンクが 404 になる。GitHub Pages でも動く。
+use_directory_urls: false
+
 # docs/ は scripts/build_docs.py が SKILL.md から生成する (gitignore 済み)。
-# ローカルでは `python scripts/build_docs.py` を先に実行してから mkdocs を叩く。
+# ローカル: python scripts/build_docs.py && mkdocs serve
 
 theme:
   name: material
   language: ja
+  font:
+    text: Noto Sans JP
+    code: Roboto Mono
   icon:
     repo: fontawesome/brands/github
   palette:
@@ -30,11 +38,15 @@ theme:
         name: ライトモードに切替
   features:
     - navigation.instant
+    - navigation.instant.progress
     - navigation.tracking
     - navigation.top
     - navigation.sections
+    - navigation.indexes
+    - navigation.footer
     - search.suggest
     - search.highlight
+    - search.share
     - content.code.copy
     - toc.follow
 
@@ -45,8 +57,14 @@ markdown_extensions:
   - tables
   - pymdownx.details
   - pymdownx.superfences
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - toc:
       permalink: true
 
 plugins:
-  - search
+  - search:
+      separator: '[\s​\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - literate-nav:
+      nav_file: SUMMARY.md
