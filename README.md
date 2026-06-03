@@ -26,6 +26,7 @@
 - **tag-release** — タグ/リリースを安全に切る。
 - **ci-init** / **ci-cache-patterns** — CI のブートストラップ・キャッシュパターン補助。
 - **gh-actions-phantom-permission** — `GITHUB_TOKEN` の無効な permission スコープ (例: `administration: write` は workflow-token ではなく fine-grained PAT のスコープ) が原因の GitHub Actions "phantom 0-job failure" run のデバッグ。
+- **ippoan-android-baseline** — ippoan org の Android アプリ標準 (ビルド / 署名 apksigner v1+v2 / gh-pages 一次配信 + QR / versionName(build.gradle)+versionCode=run_number / 更新通知は api.github.com ではなく gh-pages `latest.json` + tag 比較で REST レート制限を食わない / branch・PR 規約)。reference 実装は ippoan/HealthConnectReader。新規 Android repo を立てる時の SoT。
 - **coverage-check** / **coverage-test-patterns** — カバレッジゲートとテストパターン。
 - **migrate-test** — リポジトリ移行のテスト補助。
 - **npm-supply-chain** — npm サプライチェーンチェック。
