@@ -1,6 +1,6 @@
 ---
 name: ci-dashboard-map
-generated-from: ci-dashboard:bc0514d6d54bde959f19cdad0cfd32965a79f0c6
+generated-from: ci-dashboard:8d02fca8af6fc755945265e796266f7c3fa2a3dd
 description: ippoan/ci-dashboard (Cloudflare Workers + Hono、CI 状況 SSR ダッシュボード + GitHub MCP server + Release Wave 機構) の構造ナビゲーション。webhook 取込 (CI_HUB DO) / cross-org issue・projects SSR / Release Wave (canary flip / compatibility 突合 / ReleaseWaveHub DO) / MCP tool 群の配置と gotcha を 1 枚にまとめる。トリガー:「ci-dashboard」「Release Wave」「release wave」「compatibility 突合」「CIDashboardHub」「ReleaseWaveHub」「tag-release」「close 確認」「GitHub MCP」「webhooks/release-wave」「ci-dashboard.ippoan.org」等。
 ---
 
@@ -55,6 +55,7 @@ Wave (canary release オーケストレータ)**。`src/index.ts` が全 route �
 - **action POST**: `/api/release-close[-batch]` `/api/tag-release` `/api/recheck` `/api/dismiss` `/api/release-wave/:wave_id/{approve,rollback,abort,retest}` 他
 - **OAuth**: `GET /oauth/login` `/oauth/callback` (`@ippoan/auth-client-worker` delegation, Refs #118)
 - **MCP**: `ALL /mcp` (stateless)
+- **launch**: `GET /cc` (`launch.ts`、`?i=<owner/repo#N>` から CCoW セッション launch URL にリダイレクト, #214)
 - **PWA**: `/manifest.webmanifest` `/sw.js` `/icons/:file`
 - **export**: `CIDashboardHub` (`hub.ts`) / `ReleaseWaveHub` (`release-wave/do.ts`)
 

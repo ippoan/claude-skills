@@ -1,6 +1,6 @@
 ---
 name: ci-workflows-map
-generated-from: ci-workflows:89d74d5a6c53a108672e5b6fb60e186e5ecc3c6e
+generated-from: ci-workflows:a02975b83fb3f77893288af81f625ffcbed3778a
 description: ippoan/ci-workflows (ippoan/ohishi-exp org 共通の GitHub Actions reusable workflow 集) の構造ナビゲーション。frontend-ci / go-ci / lib-ci / rust-ci / cloud-run-deploy / auto-merge / branch-protection / release-wave-handler / tag-release 等の reusable workflow を種別ごとに索引化し、caller 必須 permissions・startup_failure・auto-merge dual-step・coverage 100% gate 等の gotcha を 1 枚にまとめる。トリガー:「ci-workflows」「reusable workflow」「frontend-ci」「go-ci」「auto-merge」「branch-protection」「startup_failure」「cloud-run-deploy」「release-wave-handler」「secret-verify」「tag-release」等。
 ---
 
@@ -55,7 +55,8 @@ ippoan + ohishi-exp org 共通の **GitHub Actions reusable workflow 集**。各
 
 | workflow | 役割 |
 |---|---|
-| `release-wave-handler.yml` | `repository_dispatch` (stage/flip/rollback 等) を受け platform 別 deploy → ci-dashboard webhook に shared secret 付き POST。設定は `config/release-wave-targets.yaml` 集約 |
+| `release-wave-handler.yml` | `repository_dispatch` (flip/rollback 等) を受け platform 別 deploy → ci-dashboard webhook に shared secret 付き POST。設定は `config/release-wave-targets.yaml` 集約。cloudrun flip は revision tag を渡さず release-wave-gcp が `latestReadyRevision` を flip (#248) |
+| `validate-release-wave-targets.yml` | PR で `config/release-wave-targets.yaml` を編集した時に schema / 整合を検証 |
 
 ### 本 repo 自身用 (`-self` 接尾)
 

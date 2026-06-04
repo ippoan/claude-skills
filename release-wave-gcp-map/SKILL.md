@@ -1,7 +1,7 @@
 ---
 name: release-wave-gcp-map
-generated-from: release-wave-gcp:678d2d0f771c45196508531ef2d96d768e68360a
-description: ippoan/release-wave-gcp (Go / Cloud Run、ci-dashboard から Cloud Run の traffic 操作を代行する薄い proxy) の構造ナビゲーション。flip-traffic / rollback / stage-check の 3 endpoint と認証境界・GCP key 0 個運用の guardrail を 1 枚にまとめる。トリガー:「release-wave-gcp」「flip-traffic」「rollback」「stage-check」「Cloud Run traffic」「release wave」「revision tag flip」「X-Release-Wave-API-Key」等。
+generated-from: release-wave-gcp:e570893e6cef86d38078b0424d2004b352ff6aab
+description: ippoan/release-wave-gcp (Go / Cloud Run、ci-dashboard から Cloud Run の traffic 操作を代行する薄い proxy) の構造ナビゲーション。flip-traffic / rollback / stage-check の 3 endpoint と認証境界・GCP key 0 個運用の guardrail を 1 枚にまとめる。flip は latestReadyRevision を anchor (揮発 revision tag 非依存, Refs ci-dashboard#248)。トリガー:「release-wave-gcp」「flip-traffic」「rollback」「stage-check」「Cloud Run traffic」「release wave」「latestReadyRevision」「revision tag flip」「X-Release-Wave-API-Key」等。
 ---
 
 # release-wave-gcp-map — ippoan/release-wave-gcp 構造ナビゲーション
@@ -27,11 +27,11 @@ Go の Cloud Run service。`ci-dashboard` (Cloudflare Worker) から呼ばれ、
 | method | path | 認証 | handler → client メソッド |
 |---|---|---|---|
 | GET | `/health` | 不要 | `handleHealth`（`/healthz` は GFE reserved のため避ける） |
-| POST | `/cloudrun/flip-traffic` | `X-Release-Wave-API-Key` | `handleFlipTraffic` → `FlipTraffic` (tag で 100% flip) |
+| POST | `/cloudrun/flip-traffic` | `X-Release-Wave-API-Key` | `handleFlipTraffic` → `FlipTraffic` (service の latestReadyRevision に 100% flip。body は `{project,region,service}` のみ) |
 | POST | `/cloudrun/rollback` | 同上 | `handleRollback` → `Rollback` (revision 名で 100% 戻す) |
 | POST | `/cloudrun/stage-check` | 同上 | `handleStageCheck` → `GetService` (latest ready / terminal condition / traffic) |
 
-- 内部は `PATCH run.googleapis.com/v2/.../services?updateMask=traffic` (flip/rollback) / `GET .../services` (stage-check)。
+- 内部は **GET で `latestReadyRevision` を解決** → `PATCH run.googleapis.com/v2/.../services?updateMask=traffic` に **revision 名指定**で 100% (flip/rollback) / `GET .../services` (stage-check)。`to_revision_tag` は受けても**無視**される (`main.go`)。
 - LRO は **待たない**（caller の ci-dashboard DO `alarm()` が poll）。
 
 ## gotcha (CLAUDE.md / README 由来)
@@ -39,7 +39,7 @@ Go の Cloud Run service。`ci-dashboard` (Cloudflare Worker) から呼ばれ、
 - **GCP の JSON key を一切発行しない**: runtime = Cloud Run attached SA + ADC、deploy = WIF + GitHub OIDC。
 - **値を持たない / 返さない**。upstream エラーは proxy が解釈せず **502 + 固定文言**でラップし、詳細は log のみ（値漏れ防止、test で regression 固定）。
 - **`project` / `region` / `service` に `/ ? #` を含むと 400 reject**（URL injection 防止）。
-- traffic 指定は **tag ベース**（`--no-traffic --tag pending-...` で stage したものを同 tag で flip する対称設計）。
+- **flip は service の `latestReadyRevision` を anchor** に 100% 切替。揮発する revision tag (`pending-...`) には依存しない (Refs ci-dashboard#248: 旧 tag ベースは tag→flip の間に main-push が入ると pending tag が外れ flip 不能になる事故があり廃止)。stage 側は no-traffic deploy で新 revision を上げるだけで flip 用 tag 付けは不要。
 - runtime SA の write 権限は **traffic update のみ**（`roles/run.admin` or `run.services.update` 最小 custom role）。delete / create / image push / SA 変更はしない。
 - `Closes/Fixes/Resolves #N` 禁止 → `Refs #N`（release 時の目視 close 用、auto-close させない）。
 
