@@ -1,6 +1,6 @@
 ---
 name: HealthConnectReader-map
-generated-from: HealthConnectReader:336cbe112da59171cf2c9dd9f16a63059a3c5ca6
+generated-from: HealthConnectReader:666489a25adae1a5141de5e8aa411607dbf98184
 description: ippoan/HealthConnectReader (Kotlin/Android、Health Connect 経由でトレッドミル運動データ ExerciseSession/Distance/Speed を読んで worker に upload する自分用アプリ) の構造ナビゲーション。MainActivity の権限フロー / HealthReader 読取 / WebView JS bridge / 日次 UploadWorker / 自動更新の配置と、Manifest 権限・署名・Health Connect の gotcha を 1 枚にまとめる。トリガー:「HealthConnectReader」「hcreader」「Health Connect」「ExerciseSession」「DistanceRecord」「SpeedRecord」「dataOriginFilter」「READ_EXERCISE 権限」「UploadWorker」「APK 署名」「release.keystore」等。
 ---
 
@@ -17,11 +17,11 @@ HTTPS POST に出す自分用ツール。全 source は 1 package `com.ippoan.hc
 
 | ファイル | 主要 symbol | 役割 |
 |---|---|---|
-| `MainActivity.kt` | `MainActivity` / `permissions` set / `ensurePermissionsGranted` / `checkForUpdate` / `startUpdateDownload` | entrypoint Activity。権限フロー + WebView 起動 + 自動更新 DL/インストール (Refs #6/#14/#30) |
+| `MainActivity.kt` | `MainActivity` / `permissions` set / `ensurePermissionsGranted` / `checkForUpdate` / `startUpdateDownload` | entrypoint Activity。権限フロー + WebView 起動 + 自動更新 DL/インストール + バージョン常時表示オーバーレイ (Refs #6/#14/#30/#35/#36) |
 | `HealthReader.kt` | `HealthReader(client)` / `readToday` / `readTodayJson` / `todayRange` | 読取ロジック本体。client を DI で受ける薄いラッパー。per-type try-catch で partial 読取許容 |
 | `HCBridge.kt` | `HCBridge` / `readToday` / `readPastDays` / `getUploadToken` / `scheduleDailyUpload` / `requestPermission` | WebView `@JavascriptInterface` bridge。JS ↔ Kotlin の橋渡し |
 | `UploadWorker.kt` | `UploadWorker` / `doWork` / `postUpload` / `schedule` / `cancel` / `isScheduled` | WorkManager の日次 upload worker。HC read → worker に HTTPS POST |
-| `UpdateChecker.kt` | `UpdateChecker` (object) / `check` / `fetchLatest` / `parseRelease` | GitHub `releases/latest` API を叩いてアプリ内自動更新を判定 |
+| `UpdateChecker.kt` | `UpdateChecker` (object) / `check` / `fetchLatest` / `parseLatest` / `LATEST_JSON_URL` | gh-pages 静的 `latest.json` を fetch してアプリ内自動更新を判定 (旧 api.github.com → gh-pages に変更、rate limit 回避) |
 | `app/src/main/AndroidManifest.xml` | — | 権限宣言 / intent-filter / FileProvider |
 | `app/build.gradle.kts` | `versionName` / `keyAlias` / `UPLOAD_TOKEN` BuildConfig | バージョン・署名・BuildConfig |
 | `app/src/main/res/xml/file_paths.xml` | — | FileProvider の external-files-path |
@@ -38,7 +38,7 @@ HTTPS POST に出す自分用ツール。全 source は 1 package `com.ippoan.hc
 - **権限は Manifest と `permissions` set の両方に揃える**: record を足したら Manifest の `uses-permission android:name="android.permission.health.READ_*"` と code の `permissions` set を同時追加。片方欠けると grant が silent fail。**現状の scope は 3 種 (EXERCISE / DISTANCE / SPEED) に固定 (Issue #1)。`READ_HEART_RATE` 等を勝手に足さない**。
 - **過去 30 日より前を読むには `READ_HEALTH_DATA_HISTORY` が必須** (Android 14+ HC 仕様、Refs #6)。
 - **Android 14+ (API 34+) は Activity に `VIEW_PERMISSION_USAGE` + `HEALTH_PERMISSIONS` intent-filter が必須**。無いと権限 UI が silent fail でダイアログが出ない (Refs #25)。`ACTION_SHOW_PERMISSIONS_RATIONALE` も宣言必須。
-- **dataOriginFilter なしだと全アプリ由来 record が混ざる** (端末本体 "Health" 由来の細切れ含む)。Life Fitness の packageName 確定後に `dataOriginFilter = setOf(DataOrigin(...))` でフィルタする。現状は診断モード (全件)。
+- **upload 経路は `TREADMILL_ORIGINS = setOf(DataOrigin("com.lifefitness.connect"))` 固定フィルタ**: `readTodayJson` / `readPastDaysJson` は sessions/distances/speeds すべてをこの origin に絞る (#33)。Fitbit / Google Fit の重複 source が混入して距離が過大になる実害を修正済み。診断用 `readToday()` は引き続き全件 (フィルタなし)。
 - **署名**: v1+v2 のみ (v3/v4 off)、`--min-sdk-version 28`。alias `hcreader` は `build.gradle.kts` の `keyAlias` と `release.yml` の `--ks-key-alias` の **2 箇所で一致必須**。PKCS12 は `keypass == storepass` 強制なので secret は 1 個。
 - keystore (`*.keystore` / `*.jks`) や secret は **commit しない** (`.gitignore` 済、`git add -f` 禁止)。
 - **`main` 直 push / force push / amend / rebase -i 禁止** (`git-safe-push.sh` が block)。PR → user が手動 merge。

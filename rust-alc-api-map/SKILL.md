@@ -1,6 +1,6 @@
 ---
 name: rust-alc-api-map
-generated-from: rust-alc-api:2289090741cef6d3e8b5625855581b9688789eea
+generated-from: rust-alc-api:d8f7342d1e38acdf096bd7b45ac34d310b0caef0
 description: rust-alc-api (アルコールチェッカー基盤の Rust/Axum Cargo workspace — 13 domain crate + gateway/tenko/carins/dtako/trouble の複数バイナリ、PostgreSQL+RLS、Cloud Run) の構造ナビゲーション。どの crate に何のルートがあるか / monolith(rust-alc-api) と per-domain API + gateway の二系統 / RLS・migration・deploy/release 分離の gotcha を 1 枚にまとめる。トリガー:「rust-alc-api」「alc-api」「alc-notify」「alc-tenko」「alc-trouble」「alc-carins」「alc-dtako」「gateway」「tenko-api」「carins-api」「dtako-api」「trouble-api」「RLS テナント」「sqlx migration」「ts-rs」「Release Wave」「Bazel」等。
 ---
 
@@ -30,12 +30,12 @@ monolith と per-domain API は同じ domain crate (`alc-tenko` 等) を共有 �
 |---|---|
 | `alc-core` | 共通基盤: models / repository trait / `auth_middleware` / `realtime_bus` / `redact_broadcast`。ts-rs 型 export 元 |
 | `alc-auth` | Google / LINE WORKS OAuth、JWT。`routes/mod.rs` で `auth` として re-export |
-| `alc-misc` | health / measurements / employees / items / api_tokens / sso_admin / tenant_users / timecard / access_requests / staging / upload / bot_admin |
+| `alc-misc` | health / health_canary / measurements / employees / items / api_tokens / sso_admin / tenant_users / timecard / access_requests / staging / upload / bot_admin / driver_info / members / communication_items / carrying_items / guidance_records |
 | `alc-tenko` | 点呼: tenko_call / tenko_records / tenko_schedules / tenko_sessions / tenko_webhooks / daily_health / equipment_failures / health_baselines |
 | `alc-carins` | 車検証(carins): car_inspections / car_inspection_files / carins_files / nfc_tags |
-| `alc-dtako` | デジタコ: dtako_* (csv_proxy / daily_hours / drivers / logs / operations / restraint_report(_pdf) / scraper / upload / vehicles / work_times / y_time_export) / vehicle_settings_dumps |
-| `alc-trouble` | トラブル管理: tickets / files / workflow / categories / offices / progress_statuses / schedules / tasks / task_types / task_statuses / notifications / lineworks_members |
-| `alc-notify` | LINE/LINE WORKS 配信: recipients / groups / documents / distribute / ingest / line_config / line_webhook / lineworks_* / read_tracker / viewer / email_documents |
+| `alc-dtako` | デジタコ: dtako_* (csv_proxy / daily_hours / drivers / logs / operations / restraint_report(_pdf) / scraper / upload / vehicles / work_times / y_time_export / event_classifications) / vehicle_settings_dumps |
+| `alc-trouble` | トラブル管理: tickets / files / workflow / categories / offices / progress_statuses / schedules / tasks / task_types / task_statuses / notifications / notifier / cloud_tasks / lineworks_members |
+| `alc-notify` | LINE/LINE WORKS 配信: recipients / groups / documents / distribute / ingest / line_config / line_webhook / lineworks_* / read_tracker / viewer / email_documents / extract / redact / background_extract / background_redaction |
 | `alc-devices` | デバイス登録 (`devices`) |
 | `alc-storage` | StorageBackend trait + R2 / GCS / HttpProxy 実装 |
 | `alc-csv-parser` / `alc-compare` | CSV パース / 比較ロジック |
@@ -82,6 +82,8 @@ monolith と per-domain API は同じ domain crate (`alc-tenko` 等) を共有 �
 - **手動 `deploy.sh`** もあり (monolith のみ、AR `cloudsql-sv/alc-app` へ)。通常は CI 経由。
 - **coverage 100% ガード**: `coverage_100.toml` 登録ファイルは CI でリグレッション検出。mock テストは
   domain 別 (`tests/mock_tenko` `mock_dtako` `mock_carins` `mock_trouble` `mock_devices` `mock_misc`)。
+- **その他 workflow**: `migration-safety-check.yml` (適用済み migration の破壊的変更検査) /
+  `release-wave.yml` (Release Wave caller、`repository_dispatch` で cloudrun flip を受ける)。
 
 ## 関連 skill
 
