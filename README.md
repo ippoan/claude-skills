@@ -33,6 +33,7 @@
 - **memory-prune** — 古い memory エントリを整理する。
 - **large-codebase-setup** — Anthropic の "large codebases" ブログ記事の 3 本柱 (階層 CLAUDE.md / Stop hook による自己反省 / LSP 統合) をリポジトリに適用する。
 - **ippoan-infra-map** — CCoW 基盤 5 repo (claude-md / claude-hooks / mcp-relay-rs / cc-relay / mcp-cf-workers) の構造・役割・依存方向と「どの repo に何を足すか」を 1 枚にまとめた situational reference。
+- **ccow-network-egress** — CCoW コンテナの outbound 制約の実測リファレンス + 60 秒 probe。UDP は全 block (STUN 往復が返らない)、TCP は 443 のみ到達かつ TLS は Anthropic egress gateway が MITM 終端、という確定事実から「WebRTC / P2P 直結 / TURN (Cloudflare Realtime TURN 含む) は CCoW から不成立」「transport 層暗号化は egress 再終端で中継からコンテナを守れない → 中継に中身を見せないにはアプリ層 E2E のみ」を導く。P2P / WebRTC / 直結 / UDP 可否を判断する前に参照。
 - **cross-repo-symbol-index** — 30+ repo を跨ぐ構造把握の結論。symbol が要る時はその場でローカル ctags (全 31 repo で 3.8 秒)、保存はしない。唯一永続的に要るのは手書き skill が code と乖離してないかの鮮度チェックで、SessionStart hook が `generated-from` の tree-sha 比較で行う。横断 index を D1/CI で持つ過剰設計は撤去した経緯も記録。
 - **repo-map** — 1 つの repo の構造ナビゲーション skill (`<repo>-map`) を作る/更新するメタ skill。`session-start-skill-coverage` hook が「skill 無し」/「鮮度切れ」を警告した repo に対し、ローカル ctags + 構造調査で map を起こし `generated-from: <repo>:<tree-sha>` を付ける。
 - **auth-worker-map** — ippoan/auth-worker の構造ナビゲーション (MCP OAuth Provider / 各 SSO provider / admin・api / DO / packages / wrangler prod-staging 構成と gotcha)。`repo-map` で作った第一号の実例・雛形。
