@@ -69,7 +69,8 @@
 - **ippoan-drift-map** — ippoan/ippoan-drift。現時点で commit ゼロの空 repo のためプレースホルダ (generated-from に empty tree SHA)。最初の commit が入ると hook が鮮度切れを検出し `repo-map` で実体化する。
 
 - **wrangler-logs** — Cloudflare Workers のログを tail・検索する。
-- **cdp-browser** — CDP 経由でブラウザを操作する。
+- **cdp-browser** — CDP 経由でブラウザを操作する (Tailscale 直結 port 9223 + Playwright)。
+- **cdp-pair** — CCoW から手元 Chrome を cdp-relay (DO+WS リレー) 経由で操作するための pairing フローを Claude が主導するスキル。`browser_pair` で短命 pairing code を発行 → relay_url/session/pair_code を MV3 拡張 popup に貼ってもらって WS 合流 → `browser_screenshot` で疎通確認 → navigate/screenshot で操作。UDP 封鎖 + NAT 越えが要る CCoW 向け (Tailscale 直結が通る環境は cdp-browser を使う)。`RELAY_TOKEN` は会話に出さず短命 pair_code だけ渡す。
 - **egov-api** / **egov-spec** — e-Gov API ヘルパー。
 - **ref-files-bulk** — ref-files MCP の `folder_download_url` で folder 配下を tar.gz で一括取得 → `/tmp/` に展開して通常の Read で読むスキル。`file_get` を 1 つずつ呼ぶ token 浪費を避ける。
 - **ui-preview** — ビルド済み静的 UI 成果物を `ui-preview.ippoan.org` の DO へ publish し、別オリジン (workers.dev) の iframe で目視確認する preview URL を発行するスキル。tar.gz を直 PUT (MCP `create_preview` / `get_preview_stats` または直 curl)。親ページは WebSocket で publish を検知して自動更新、版は最後の publish から 10 分で自動削除 (ephemeral)。Nuxt/Vite は deep path 用に base 調整が要る (skill 参照)。「見た目を確認したい」「この画面どう見える？」等で使う。
