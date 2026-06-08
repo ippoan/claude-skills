@@ -116,6 +116,17 @@ settings.json に登録された hooks が以下を自動ブロックする:
 | `git-safe-push.sh` | `git commit --amend`, `git push --force` | 新コミット追加 + 通常 push |
 | `pr-state-guard.sh` | MERGED/CLOSED ブランチへの push | 新ブランチを作れ |
 | `no-local-merge.sh` | `gh pr merge` | auto-merge か Web UI を使え |
+| `pr-push-allowlist-guard.sh` | allowlist repo での `pr-push.sh` 起動 | `/wt-direct-push` を使え |
+
+### wt-direct-push allowlist repo は `/pr-push` 不可 (script 内蔵ガード)
+
+`wt-direct-push/config/direct-push-ok.txt` に登録された repo (branch protection
+無し / auto-merge 未設定) で `pr-push.sh` を実行すると、**script 自身が** owner/name
+を解決して block し `/wt-direct-push` に誘導する (PreToolUse hook より確実な backstop)。
+
+allowlist repo で PR を作ると auto-merge 無しで塩漬けになり、その間に tag-release が
+古い main から build → release から changes が漏れる (Refs ippoan/github-mcp-server-rs#28)。
+どうしても PR にしたい正当な理由がある場合のみ `PR_PUSH_ALLOW_ANY=1` を付けて再実行する。
 
 ## 禁止事項 (スクリプト + フックが自動ガード)
 
