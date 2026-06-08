@@ -83,6 +83,7 @@
 - **verify-env** — 環境変数を検証する。
 - **repo-migrate** / **package-publish-debug** — リポジトリ・パッケージ関連のその他ツール。
 - **secret-inject** — secret を GCP(SoT)/Cloudflare Secrets Store/GitHub Actions org secret に **no-leak** で投入・rotate する。値を LLM context / tool-call / log に一切載せず、CCoW の OAT から mcp.write の binding_jwt を mint して `security-inventory` の `/mcp/secret-upload` に `--data-binary` で直送する。`create_secret` MCP tool は value が tool param に載る (context leak) ので、生成系 secret はこちらを使う。
+- **secret-naming** — CF Secrets Store ↔ GCP Secret Manager の secret 命名規約 (SoT)。CF Secrets Store binding `secret_name` は kebab-case、GCP Secret Manager 名は SCREAMING_SNAKE_CASE。両者 rename 不可 + alias は rotation 2 重 bump で drift するため名前は揃えず規約で固定し、同一 value の pair は GCP を先に rotate → CF/GH へ片方向 propagate する。違反は claude-hooks `secret-naming-guard.sh` が Write/Edit 時に非ブロッキング警告 (Refs ippoan/secrets-inventory#23)。
 
 - **copy-paste-friendly** — Claude が直接 push できず (スコープ外 / アクセス不可 / ローカル専用 worker 等) ユーザーが手元でコピペ適用する時、コピー操作が複数の ``` ブロックに分割されて何度もコピペさせる事態を防ぐルール。同一ファイルの複数箇所の置換を別ブロックに割らず、**1 回コピー & 実行で全変更が入る単一スクリプト** (python 一括置換 / `git apply` diff) にまとめる。コードブロック内に説明文を混ぜない。
 
