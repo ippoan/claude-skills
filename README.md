@@ -21,6 +21,8 @@
 - **check-issue** — GitHub issue を確認してトリアージ用のコンテキストを抽出する。
 - **pr-push** — リポジトリの規約に従って PR を作成・push する。
 - **pr-subscribe** — `subscribe_pr_activity` 経由で、現在の CCoW セッションを PR の活動 (CI 失敗 / コメント / レビュー) に購読させる。PR イベントでセッションが再起動される (cc-relay #69)。PR URL / `owner/repo#N` を渡す。未指定時は user に確認する。使い方: `/pr-subscribe <PR URL>`
+- **next-session** — 次セッションへの引き継ぎを作成する。`.claude/handoff.md` に「次にやること」を保存 + commit し、CCoW ではコンテナが ephemeral なため引き継ぎ用 issue (`handoff` ラベル / `$ARGUMENTS` 指定) にも同内容をコメントして permalink を提示する。`Refs #N` / 秘密値は載せない。resume-session と対。
+- **resume-session** — 前回の引き継ぎを読み込み即座に作業再開する。`$ARGUMENTS` の issue/comment URL → `.claude/handoff.md` → `handoff` ラベル issue の最新コメント、の順で復元 (CCoW で handoff.md が揮発しても可)。新セッション開始時 / compact 後に実行。next-session と対。
 - **wt-direct-push** — worktree から直接 push するワークフロー。
 - **worktree-cleanup** — 古い worktree を一括掃除する。
 - **tag-release** — タグ/リリースを安全に切る。
