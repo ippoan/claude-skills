@@ -29,6 +29,7 @@
 - **auto-merge-deploy-race** — CI 内蔵の auto-merge が deploy (staging cutover) を待たずに merge → branch 削除で cutover が cancel され、**deploy 失敗が無音化する** race の検知・復旧・予防 (rust-alc-api#391 で enforce が 2 回未適用になった実害から)。「merged なのに staging に反映されない」時に参照。
 - **gcp-cloud-run-routing-traps** — Cloud Run「Ready なのに外から 404」系の実測リファレンス (ippoan/cf-flickr-proxy#1 cutover で確定)。Google フロントは外部からの `/healthz` をインターセプトして汎用 404 を返す (= health endpoint は `/health` 標準)、404 は Google 汎用 / Cloud Run インフラ / アプリの 3 種を body で鑑別、新規 service の run.app hostname の GFE 配布ムラ、domain mapping の managed cert が HTTP-01 challenge の 302 で CertificatePending を長引かせる罠、MCP/手動 deploy の digest pin + per-secret IAM grant。
 - **ippoan-android-baseline** — ippoan org の Android アプリ標準 (ビルド / 署名 apksigner v1+v2 / gh-pages 一次配信 + QR / versionName(build.gradle)+versionCode=run_number / 更新通知は api.github.com ではなく gh-pages `latest.json` + tag 比較で REST レート制限を食わない / branch・PR 規約)。reference 実装は ippoan/HealthConnectReader。新規 Android repo を立てる時の SoT。
+- **alcoholchecker-deploy** — ippoan/AlcoholChecker の deploy / 配信モデルの SoT。dev 端末は PR 時点で prerelease build を FCM OTA push (`trigger-update-dev` + `download_url`)、prod 端末は Release Wave / 管理画面トリガーで明示配信 (master merge は配信なし)。versionCode=run_number 単調増加・rollback 不可・alc.ippoan.org 移行の gotcha。
 - **coverage-check** / **coverage-test-patterns** — カバレッジゲートとテストパターン。
 - **migrate-test** — リポジトリ移行のテスト補助。
 - **npm-supply-chain** — npm サプライチェーンチェック。
