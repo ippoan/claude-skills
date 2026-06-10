@@ -26,6 +26,7 @@
 - **tag-release** — タグ/リリースを安全に切る。
 - **ci-init** / **ci-cache-patterns** — CI のブートストラップ・キャッシュパターン補助。
 - **gh-actions-phantom-permission** — `GITHUB_TOKEN` の無効な permission スコープ (例: `administration: write` は workflow-token ではなく fine-grained PAT のスコープ) が原因の GitHub Actions "phantom 0-job failure" run のデバッグ。
+- **gcp-cloud-run-routing-traps** — Cloud Run「Ready なのに外から 404」系の実測リファレンス (ippoan/cf-flickr-proxy#1 cutover で確定)。Google フロントは外部からの `/healthz` をインターセプトして汎用 404 を返す (= health endpoint は `/health` 標準)、404 は Google 汎用 / Cloud Run インフラ / アプリの 3 種を body で鑑別、新規 service の run.app hostname の GFE 配布ムラ、domain mapping の managed cert が HTTP-01 challenge の 302 で CertificatePending を長引かせる罠、MCP/手動 deploy の digest pin + per-secret IAM grant。
 - **ippoan-android-baseline** — ippoan org の Android アプリ標準 (ビルド / 署名 apksigner v1+v2 / gh-pages 一次配信 + QR / versionName(build.gradle)+versionCode=run_number / 更新通知は api.github.com ではなく gh-pages `latest.json` + tag 比較で REST レート制限を食わない / branch・PR 規約)。reference 実装は ippoan/HealthConnectReader。新規 Android repo を立てる時の SoT。
 - **coverage-check** / **coverage-test-patterns** — カバレッジゲートとテストパターン。
 - **migrate-test** — リポジトリ移行のテスト補助。
