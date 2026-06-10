@@ -23,7 +23,7 @@ ctags) → それでも無ければ新規実装して良いが、**2 repo 目で
 | OAuth クライアント側部品 (PKCE, introspect client, github token cache) | `@ippoan/auth-client-worker` (auth-worker/packages) | |
 | Nuxt 認証 UI / composable (useAuth, AuthToolbar, StagingFooter, VersionBadge, decodeJwtClaims, createAuthFetch, auth plugin / proxy 配管) | `@ippoan/auth-client` (auth-worker/packages) | 拡張中 (ippoan/auth-worker#257)。Nuxt app に auth 配管をコピーしない |
 | coverage 100% gate script (`check_coverage_100.mjs`) | `@ippoan/test-utils` (auth-worker/packages) | bin 公開予定 (同 #257)。新 repo に script をコピーしない |
-| e-Gov 電子申請 (API client, OAuth PKCE, XML 署名 xmldsig/c14n/pfx) | `@ippoan/egov-shinsei-sdk` | nuxt-egov は SDK 消費に戻す (ippoan/nuxt-egov#93) |
+| e-Gov 電子申請 (API client, OAuth PKCE, XML 署名 xmldsig/c14n/pfx) | `@ippoan/egov-shinsei-sdk` (`/xmldsig` subpath export) | nuxt-egov の fork は解消済み (ippoan/nuxt-egov#93、npm 0.1.0〜) |
 | 静的 UI プレビュー配信 | ippoan/ui-preview (DO) + `ui-preview` skill | |
 
 ## Rust
@@ -40,7 +40,7 @@ ctags) → それでも無ければ新規実装して良いが、**2 repo 目で
 
 | capability | canonical | 備考 |
 |---|---|---|
-| Cloud Run proxy skeleton (MustEnv, RequireAPIKey constant-time, WriteJSON/Error 固定文言 502, gRPC status→HTTP) | ippoan/go-cloudrun-proxy | 実装中 (ippoan/go-cloudrun-proxy#1)。consumer: release-wave-gcp, secrets-inventory-gcp |
+| Cloud Run proxy skeleton (MustEnv, RequireAPIKey constant-time, WriteJSON/Error 固定文言 502, gRPC status→HTTP) | ippoan/go-cloudrun-proxy | 実装済み (ippoan/go-cloudrun-proxy#1)。consumer 移行済み: release-wave-gcp, secrets-inventory-gcp |
 
 ## インフラ / 運用
 
