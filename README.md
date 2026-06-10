@@ -73,7 +73,6 @@
 - **secrets-inventory-map** — secret/SA 監査 + 投入/rotate MCP server (Worker)。GCP=SoT・メタのみ read・proxy 集約・CF Access(人間)/binding_jwt(MCP, mcp.write scope) 二重認証・stateless `/mcp` と stateful `/mcp-do` dual-path。
 - **secrets-inventory-gcp-map** — ippoan/secrets-inventory-gcp (Go/Cloud Run)。`secrets-inventory` Worker から GCP Secret Manager/IAM/CF・GitHub secret を代行する proxy の read endpoint と最小 write 例外・GCP key 0 個運用・rotate guardrail。
 - **ui-preview-map** — 静的 UI 成果物の ephemeral プレビュー配信基盤 (tar.gz 直 PUT→展開ガード→SQLite→別オリジン配信→WS live→TTL 削除)。PreviewDO・control/配信オリジン分離・iframe sandbox 隔離・MCP tool。
-- **ippoan-drift-map** — ippoan/ippoan-drift。現時点で commit ゼロの空 repo のためプレースホルダ (generated-from に empty tree SHA)。最初の commit が入ると hook が鮮度切れを検出し `repo-map` で実体化する。
 
 - **wrangler-logs** — Cloudflare Workers のログを tail・検索する。
 - **cdp-browser** — CDP 経由でブラウザを操作する (Tailscale 直結 port 9223 + Playwright)。
