@@ -19,10 +19,10 @@ ctags) → それでも無ければ新規実装して良いが、**2 repo 目で
 | capability | canonical | 備考 |
 |---|---|---|
 | MCP worker 配線 (stateless `/mcp` factory、durable DO+WS transport) | `@ippoan/mcp-cf-workers` | consumer 例: ui-preview, cdp-relay, secrets-inventory |
-| worker 認証部品 (HS256 JWT verify, timing-safe 比較, base64url, binding-jwt middleware, resolveSecret) | `@ippoan/mcp-cf-workers` の auth surface | 拡張中 (ippoan/mcp-cf-workers#46)。**自前 Web Crypto 実装を新たに書かない** |
+| worker 認証部品 (HS256 JWT verify, timing-safe 比較, base64url, binding-jwt middleware, resolveSecret) | `@ippoan/mcp-cf-workers` の `./auth` export | 実装済 (ippoan/mcp-cf-workers#46 → PR #47 merged)。consumer 移行は release tag publish 後。**自前 Web Crypto 実装を新たに書かない** |
 | OAuth クライアント側部品 (PKCE, introspect client, github token cache) | `@ippoan/auth-client-worker` (auth-worker/packages) | |
-| Nuxt 認証 UI / composable (useAuth, AuthToolbar, StagingFooter, VersionBadge, decodeJwtClaims, createAuthFetch, auth plugin / proxy 配管) | `@ippoan/auth-client` (auth-worker/packages) | 拡張中 (ippoan/auth-worker#257)。Nuxt app に auth 配管をコピーしない |
-| coverage 100% gate script (`check_coverage_100.mjs`) | `@ippoan/test-utils` (auth-worker/packages) | bin 公開予定 (同 #257)。新 repo に script をコピーしない |
+| Nuxt 認証 UI / composable (useAuth, AuthToolbar, StagingFooter, VersionBadge, decodeJwtClaims, createAuthFetch, auth plugin / proxy 配管) | `@ippoan/auth-client` (auth-worker/packages) | createAuthFetch (401→refresh→retry) / decodeJwtClaims マルチバイト対応は merge 済 (ippoan/auth-worker#257 → PR #258)。タスク 4・5 (introspect 引き上げ / Nuxt 配管) は未着手。Nuxt app に auth 配管をコピーしない |
+| coverage 100% gate script (`check_coverage_100.mjs`) | `@ippoan/test-utils` (auth-worker/packages) | bin (`check-coverage-100`) 公開済 (同 #257 → PR #258)。新 repo に script をコピーしない |
 | e-Gov 電子申請 (API client, OAuth PKCE, XML 署名 xmldsig/c14n/pfx) | `@ippoan/egov-shinsei-sdk` (`/xmldsig` subpath export) | nuxt-egov の fork は解消済み (ippoan/nuxt-egov#93、npm 0.1.0〜) |
 | 静的 UI プレビュー配信 | ippoan/ui-preview (DO) + `ui-preview` skill | |
 
@@ -32,7 +32,8 @@ ctags) → それでも無ければ新規実装して良いが、**2 repo 目で
 |---|---|---|
 | dtako/拘束時間 CSV パース (KUDGIVT/KUDGURI/work_segments) | rust-alc-api `crates/alc-csv-parser` | daiun-salary は移行予定 (ohishi-exp/daiun-salary#10) |
 | 拘束時間 比較エンジン | rust-alc-api `crates/alc-compare` | 同上 |
-| HS256 app JWT (claims/issue/verify), Google ID token verify, axum auth middleware, constant-time 比較 | rust-alc-api `crates/alc-core` | satellite repo はコピーでなく依存 (ohishi-exp/rust-ichibanboshi#4) |
+| HS256 app JWT (claims/issue/verify, env claim) | rust-alc-api `crates/alc-auth-jwt` | leaf crate (ippoan/rust-alc-api#410)。public repo なので satellite から無認証 git dep 可。ichibanboshi 移行 PR: ohishi-exp/rust-ichibanboshi#6 |
+| Google ID token verify, axum auth middleware, constant-time 比較 | rust-alc-api `crates/alc-core` | satellite repo はコピーでなく依存 |
 | R2 / GCS storage backend (trait + presign) | rust-alc-api `crates/alc-storage` | |
 | 外部 API client の作法 (with_endpoints 注入 + wiremock) | rust-alc-api CLAUDE.md「外部 API 連携の開発フロー」 | パターンの SoT (crate ではない) |
 
