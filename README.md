@@ -43,7 +43,7 @@
 - **ippoan-lib-catalog** — org の「この機能の canonical 実装はどこか」の capability 粒度カタログ。**本体は `knowledge/standards/libs/org-capability-catalog.md` へ移設済み** (このスキルはトリガー維持のポインタ)。util / helper / 横断ロジックを新規実装する前に参照し、既存 lib があれば consume する (lib-first)。rule of two / SOURCE-MIRROR 規約 / 監査記録 (ippoan/claude-md#76) への pointer も。
 - **cross-repo-symbol-index** — 30+ repo を跨ぐ構造把握の結論。symbol が要る時はその場でローカル ctags (全 31 repo で 3.8 秒)、保存はしない。唯一永続的に要るのは手書き skill が code と乖離してないかの鮮度チェックで、SessionStart hook が `generated-from` の tree-sha 比較で行う。横断 index を D1/CI で持つ過剰設計は撤去した経緯も記録。
 - **repo-map** — 1 つの repo の構造ナビゲーション skill (`<repo>-map`) を作る/更新するメタ skill。`session-start-skill-coverage` hook が「skill 無し」/「鮮度切れ」を警告した repo に対し、ローカル ctags + 構造調査で map を起こし `generated-from: <repo>:<tree-sha>` を付ける。
-- **auth-worker-map** — ippoan/auth-worker の構造ナビゲーション (MCP OAuth Provider / 各 SSO provider / admin・api / DO / packages / wrangler prod-staging 構成と gotcha)。`repo-map` で作った第一号の実例・雛形。
+- **auth-worker-map** — → **移設済み** (claude-skills#59 Wave 2)。本体は [`ippoan/auth-worker/.claude/skills/auth-worker-map/`](https://github.com/ippoan/auth-worker/blob/main/.claude/skills/auth-worker-map/SKILL.md)。コードと同じ PR で更新され、skills-check CI が鮮度を見る。
 
 ### per-repo map (`<repo>-map`)
 
@@ -52,7 +52,7 @@
 - **HealthConnectReader-map** — ippoan/HealthConnectReader (Kotlin/Android) — Health Connect の運動データ (ExerciseSession/Distance/Speed) を読んで worker に upload する自分用アプリ。MainActivity 権限フロー / WebView JS bridge / 日次 UploadWorker と Manifest 権限・署名・dataOriginFilter の gotcha。
 - **HealthConnectReaderWorker-map** — Android HealthConnectReader の WebView UI + R2/D1 backend Worker。HC・Zones・manual・ghapi 4 source の upload/merge/突合経路・Google Health 連携 DO・auth 3 経路・single-env (staging=prod) gotcha。
 - **alc-app-map** — yhonda-ohishi-alc/alc-app (業務用アルコールチェッカー / 複合 public repo)。`web/` (Nuxt 4 PWA on Workers) / `cf-alc-signaling/` (WebRTC signaling DO) / `fc1200-wasm` (秘匿) の区画、WebSerial/WebRTC/顔認証 composable、テスト方針 (v8 ignore 禁止 / mock-live 統一) の gotcha。
-- **ci-dashboard-map** — CI 状況 SSR ダッシュボード + GitHub MCP server (~46 tool) + Release Wave (canary flip/compatibility 突合) を 1 worker に同居。CIDashboardHub/ReleaseWaveHub DO・webhook 経路・close 確認フロー・KV エイリアス罠。
+- **ci-dashboard-map** — → **移設済み** (claude-skills#59 Wave 2)。本体は [`ippoan/ci-dashboard/.claude/skills/ci-dashboard-map/`](https://github.com/ippoan/ci-dashboard/blob/main/.claude/skills/ci-dashboard-map/SKILL.md)。コードと同じ PR で更新され、skills-check CI が鮮度を見る。
 - **ci-workflows-map** — org 共通 GitHub Actions reusable workflow 集。frontend/go/lib/rust-ci・cloud-run-deploy・auto-merge・branch-protection・release-wave-handler・tag-release を種別索引化し、caller 必須 permissions・auto-merge dual-step・coverage 100% gate の gotcha。
 - **claude-skills-map** — この repo 自身。skill ディレクトリ群を種別 (per-repo map / PR・CI 運用 / 構造把握メタ / secret・MCP / テスト / ドメイン) ごとにグループ索引化し、SKILL.md レイアウト規約・README 同期・scripts/.claude の位置。
 - **dtako-scraper-map** — ohishi-exp/dtako-scraper (Rust/Axum + chromiumoxide)。theearth-np.com から csvdata.zip を取得し daiun-salary へ upload する Cloud Run スクレイパー。SSE 進捗・comp_id 直列化・手動 deploy の gotcha。
@@ -70,7 +70,7 @@
 - **rust-flickr-map** — → **移設済み** (claude-skills#59 Wave 1)。本体は対象 repo の [`ippoan/rust-flickr/.claude/skills/rust-flickr-map/`](https://github.com/ippoan/rust-flickr/blob/main/.claude/skills/rust-flickr-map/SKILL.md)。コードと同じ PR で更新され、skills-check CI が鮮度を見る。
 - **cf-flickr-proxy-map** — ippoan/cf-flickr-proxy (rust-flickr の REST proxy / CORS edge Worker) の構造。route/ヘッダ allowlist・org 非注入・Smart Placement・edge 100s 制限。
 - **release-wave-gcp-map** — ippoan/release-wave-gcp (Go/Cloud Run)。Release Wave の canary flip / no-traffic deploy 切替を司る handler の構造。
-- **rust-alc-api-map** — アルコールチェッカー基盤の Rust/Axum Cargo workspace (13 domain crate + gateway/tenko/carins/dtako/trouble の複数バイナリ、PostgreSQL+RLS、Cloud Run)。crate 別ルート・monolith/per-domain 二系統・RLS/migration/Release Wave deploy 分離の gotcha。
+- **rust-alc-api-map** — → **移設済み** (claude-skills#59 Wave 2)。本体は [`ippoan/rust-alc-api/.claude/skills/rust-alc-api-map/`](https://github.com/ippoan/rust-alc-api/blob/main/.claude/skills/rust-alc-api-map/SKILL.md)。コードと同じ PR で更新され、skills-check CI が鮮度を見る。
 - **rust-ichibanboshi-map** — 一番星 SQL Server CAPE#01 の売上を tiberius で読む Rust/Axum API。sales 集計エンドポイント・売上集計ロジック (税抜カラム/請求K)・musl deploy + Cloudflare Tunnel の gotcha。
 - **secrets-inventory-map** — secret/SA 監査 + 投入/rotate MCP server (Worker)。GCP=SoT・メタのみ read・proxy 集約・CF Access(人間)/binding_jwt(MCP, mcp.write scope) 二重認証・stateless `/mcp` と stateful `/mcp-do` dual-path。
 - **secrets-inventory-gcp-map** — ippoan/secrets-inventory-gcp (Go/Cloud Run)。`secrets-inventory` Worker から GCP Secret Manager/IAM/CF・GitHub secret を代行する proxy の read endpoint と最小 write 例外・GCP key 0 個運用・rotate guardrail。
