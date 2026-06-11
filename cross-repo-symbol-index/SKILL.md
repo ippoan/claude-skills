@@ -57,29 +57,57 @@ workflow、auth-worker の per-repo CI job、D1 database 本体。
 ## skill 鮮度チェックの規約 (generated-from)
 
 code から起こした手書き skill (構造 map 等) は frontmatter に **`generated-from`** を
-持つ。形式は `repo:tree-sha` を space 区切りで 1 行:
+持つ。
+
+### 新形式: commit-sha + paths (Refs claude-hooks#18 PR1)
+
+単一 repo を指す `<repo>-map` は `generated-from: <repo>:<commit-sha>` と、map が
+参照するコードのスコープ `paths:` を持つ:
 
 ```yaml
 ---
-name: ippoan-infra-map
-generated-from: claude-md:<tree-sha> claude-hooks:<tree-sha> mcp-relay-rs:<tree-sha> ...
+name: <repo>-map
+generated-from: <repo>:<commit-sha>
+paths: [src/, proto/]
 ---
 ```
 
-`tree-sha` は生成時の `git -C /home/user/<repo> rev-parse HEAD^{tree}`。
+- **commit-sha** (`git -C /home/user/<repo> rev-parse HEAD`): CI が
+  `git rev-list --count <commit>..HEAD -- <paths>` で**乖離距離**を測れる。
+  旧 **tree-sha** は完全一致判定のため 1 コミットで常時 stale 化し (オオカミ少年)、
+  これが鮮度警告が機能しなかった根本原因の 1 つ (claude-hooks#18)。
+- **paths**: この paths 下に変更があった時だけ stale 扱い。無関係な変更
+  (`README.md` 等) で stale にならない。
 
-SessionStart hook (claude-hooks **`session-start-skill-coverage.sh`**) が
-`~/.claude/skills/*/SKILL.md` を走査し、`generated-from` の各 repo について現在の
-tree-sha と比較。ズレてたら「この skill は <repo> の変化に追従していない」(stale)、
-`generated-from` のどこにも載っていない attached repo は「対応 skill 無し」(uncovered)
-として additionalContext で警告する。`generated-from` を持たない skill は対象外 (opt-in)。
+### 鮮度判定は CI へ移譲 (hook は縮小)
+
+stale 判定は SessionStart hook から **skills-check CI (PR diff 判定、ci-workflows#118)**
+へ移譲された。CI が「`paths` に変更があるのに map が同 PR で更新されていない」場合に
+warn する。map は各 repo の `.claude/skills/<repo>-map/` へ同居移行し
+(Refs claude-skills#59)、コードと同じ PR で更新される (クロスリポ書き込み・push 忘れ
+消失問題が消える)。
+
+SessionStart hook (claude-hooks **`session-start-skill-coverage.sh`**) は **「map の無い
+attached repo の通知」(uncovered) だけに縮小** される (claude-hooks#18 PR2)。
+`generated-from` を持たない skill は対象外 (opt-in)。
+
+### 旧形式 (tree-sha) の移行
+
+複数 repo を space 区切りで列挙する横断 map (例 `ippoan-infra-map`) と、未移行の
+`<repo>-map` は当面 `<repo>:<tree-sha>` のまま残る。移行期間中は **旧形式を warn のみ
+で判定スキップ** (claude-hooks#18 Q1)。`repo-map` で再生成する時に新形式へ寄せる。
+
+```yaml
+# 横断 map (移行対象外・当面 tree-sha 維持)
+generated-from: claude-md:<tree-sha> claude-hooks:<tree-sha> mcp-relay-rs:<tree-sha> ...
+```
 
 > 別名注意: `session-start-stale-skills-check.sh` は**別 hook** (sources clone が
 > remote から古くないかを見る bootstrap 鮮度チェック)。code↔map の鮮度はこの
 > `skill-coverage.sh` の方。
 
-> 鮮度判定に ctags は不要 — tree-sha の比較だけ。symbol が実際に要る時に初めて
-> ローカル ctags する。
+> 鮮度判定に ctags は不要 — commit-sha + paths の比較だけ。symbol が実際に要る時に
+> 初めてローカル ctags する。
 
 ### どのロジックがどこに居るか (動作=claude-hooks / 配線=claude-md)
 
@@ -87,7 +115,8 @@ tree-sha と比較。ズレてたら「この skill は <repo> の変化に追�
 
 | 何 | 置き場 |
 |---|---|
-| coverage/鮮度の**判定ロジック本体** | **claude-hooks** `session-start-skill-coverage.sh` |
+| **stale 判定** (paths diff、新方式) | **ci-workflows** `skills-check.yml` (PR diff、#118) |
+| coverage (map 無し repo 通知) の**判定ロジック** | **claude-hooks** `session-start-skill-coverage.sh` (#18 で縮小) |
 | hook の **SessionStart 登録 + env** | **claude-md** `.claude/settings.json.template` |
 | `<repo>-map` / `ippoan-infra-map` (map 実体) | **claude-skills** |
 
