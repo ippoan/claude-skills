@@ -14,7 +14,7 @@
 | 置き場 | スキル |
 |---|---|
 | **repo 直下** (大多数) | `auth-worker-map/`, 各 `<repo>-map/`, `repo-map/`, `cross-repo-symbol-index/`, `pr-push/`, `coverage-*`, `egov-*`, `open-multirepo-smoke/` … |
-| **`.claude/skills/` 配下** (5 個のみ) | `ippoan-infra-map`, `gh-actions-phantom-permission`, `large-codebase-setup`, `open-multirepo`, `ui-preview` |
+| **`.claude/skills/` 配下** (少数) | `ippoan-infra-map`, `gh-actions-phantom-permission`, `large-codebase-setup`, `open-multirepo`, `ui-preview`, `plan-with-fable`, `review-with-fable` |
 
 この 2 系統への分裂は移行時の歴史的経緯で、**統一方針は未確定**。歴史的に直下が
 多数派なので当面は直下に倣うのが無難 (Claude Code 標準パスは `.claude/skills/` の方)。
@@ -40,6 +40,15 @@
 - **`repo-map`** — 単一 `<repo>-map` を作る / 更新する手順 (ローカル ctags +
   `generated-from: <repo>:<tree-sha>`)。coverage hook が uncovered / stale を
   警告した時に使う。
+
+## Fable plan/review 開発ループ
+
+判断が効く「実装 plan」と「差分 review」だけを上位モデル Fable に切り出す skill 2 本
+(`/plan-with-fable` / `/review-with-fable`、いずれも `.claude/skills/` 配下) がある。
+両者は共有エージェント `.claude/agents/fable-advisor.md` (`model: fable`、read-only)
+を `context: fork` で起動する。前提条件・運用は `README.md` の
+「Fable plan/review 開発ループ」を参照 (Refs #68)。
+`CLAUDE_CODE_SUBAGENT_MODEL` を設定すると `model: fable` が上書きされ無効化される点に注意。
 
 ## repo-policy
 
