@@ -93,6 +93,13 @@ grep -ri "<キーワード>" knowledge/decisions/ knowledge/standards/
 
 - 300 行超 → 分割提案 / 未来日付・非 ISO 日付 / tags 空・表記ゆれ
 
+## 相互参照
+
+- decision が issue を引く時は `branch-issue-linking` skill の規約に従い
+  `Refs #N` で書く (auto-close させない。`Closes/Fixes/Resolves` は禁止)。
+- capability → canonical の規範は `standards/libs/org-capability-catalog.md`
+  (旧 `ippoan-lib-catalog`)。
+
 ## 注意
 
 - **機密を書かない** (skill は public 相当 = grep 対象として全公開される前提)。
