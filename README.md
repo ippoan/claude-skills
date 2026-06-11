@@ -44,6 +44,8 @@
 - **knowledge** — CCoW セッション跨ぎで grep 参照できる「判断の記録」ベース。`decisions/` (経緯・却下案・調査結果。過去形) と `standards/` (推奨 lib / reusable workflow 等の規範。現在形・結論のみ) の二層。外部 DB (Notion / D1+FTS5 / Vectorize / R2 SQL) はローカル grep に乗らず棄却し、skill マウント経由で grep できる本 repo に同居 (索引・API・認証 不要)。規約は `knowledge/rules.json` が SoT (check.py が CI で機械検証)。map は対象外 (各 repo へ同居移行、Refs #59)。
 - **ippoan-lib-catalog** — org の「この機能の canonical 実装はどこか」の capability 粒度カタログ。**本体は `knowledge/standards/libs/org-capability-catalog.md` へ移設済み** (このスキルはトリガー維持のポインタ)。util / helper / 横断ロジックを新規実装する前に参照し、既存 lib があれば consume する (lib-first)。rule of two / SOURCE-MIRROR 規約 / 監査記録 (ippoan/claude-md#76) への pointer も。
 - **cross-repo-symbol-index** — 30+ repo を跨ぐ構造把握の結論。symbol が要る時はその場でローカル ctags (全 31 repo で 3.8 秒)、保存はしない。唯一永続的に要るのは手書き skill が code と乖離してないかの鮮度チェックで、SessionStart hook が `generated-from` の tree-sha 比較で行う。横断 index を D1/CI で持つ過剰設計は撤去した経緯も記録。
+- **plan-with-fable** — コードを読んで詳細な実装計画と PR 分割を Fable に作らせる (`context: fork` + `fable-advisor` agent)。Issue の高レベル計画を実装可能なタスクに落とす段階で使う。使い方: `/plan-with-fable <課題 / Issue の内容>`。下記「Fable plan/review 開発ループ」参照。
+- **review-with-fable** — 実装が終わった差分 (`git diff origin/main...HEAD` を skill 本文に注入) を Fable にレビューさせ、バグ・設計の綻び・テスト漏れを重大度順で返させる。下記「Fable plan/review 開発ループ」参照。
 - **repo-map** — 1 つの repo の構造ナビゲーション skill (`<repo>-map`) を作る/更新するメタ skill。`session-start-skill-coverage` hook が「skill 無し」/「鮮度切れ」を警告した repo に対し、ローカル ctags + 構造調査で map を起こし `generated-from: <repo>:<tree-sha>` を付ける。
 - **auth-worker-map** — → **移設済み** (claude-skills#59 Wave 2)。本体は [`ippoan/auth-worker/.claude/skills/auth-worker-map/`](https://github.com/ippoan/auth-worker/blob/main/.claude/skills/auth-worker-map/SKILL.md)。コードと同じ PR で更新され、skills-check CI が鮮度を見る。
 
@@ -98,6 +100,27 @@
 - **copy-paste-friendly** — Claude が直接 push できず (スコープ外 / アクセス不可 / ローカル専用 worker 等) ユーザーが手元でコピペ適用する時、コピー操作が複数の ``` ブロックに分割されて何度もコピペさせる事態を防ぐルール。同一ファイルの複数箇所の置換を別ブロックに割らず、**1 回コピー & 実行で全変更が入る単一スクリプト** (python 一括置換 / `git apply` diff) にまとめる。コードブロック内に説明文を混ぜない。
 
 スキルではない単独の markdown ノート: `backend-check.md`, `bazel-rust.md`, `compare-pdf.md`, `smart-read.md`。
+
+## Fable plan/review 開発ループ (opusplan pipeline)
+
+Opus を司令塔に置きつつ、判断が効く「計画」と「レビュー」だけを上位モデル Fable に切り出す開発ループ (Refs [#68](https://github.com/ippoan/claude-skills/issues/68))。実装はコスト効率のため Sonnet (`opusplan` env が自動切替)。
+
+| 段階 | 役割 | モデル | 手段 |
+|---|---|---|---|
+| 1. Plan (web) | 高レベル計画 → Issue 化 | 人 + web | issue-design |
+| 2. 実装 Plan | コード読み → 詳細 plan + PR 分割 | **Fable** | `/plan-with-fable` |
+| 3. 管理 + 実装 | タスク登録・管理 → 実装 | opusplan (Opus → Sonnet) | env 設定済 |
+| 4. Review | 差分レビュー | **Fable** | `/review-with-fable` |
+
+両 skill は共有エージェント [`fable-advisor`](.claude/agents/fable-advisor.md) (`model: fable`、read-only、実装しない) を `context: fork` で起動する。fork は会話文脈を見ないため、review は `` !`git diff` `` 注入、plan は `$ARGUMENTS` への課題の明示渡し + 自前のコード読みで補う。`opusplan` の plan フェーズは 200K context 固定なので、大規模リポジトリを読ませる実装 plan は Fable (1M context) 側に寄せる。
+
+### 前提条件
+
+- 組織の Fable アクセス + Claude Code **v2.1.170 以降**
+- `CLAUDE_CODE_SUBAGENT_MODEL` が**未設定**であること (設定済だと agent の `model: fable` を上書きし、両 skill とも Fable が無効化される)
+- 段階 3 の `opusplan` env (`ANTHROPIC_MODEL=opusplan` + pin) は別途設定済みであること
+- CCoW では agent / skill ともリポジトリにコミットして使う (`~/.claude` は不可)
+- コスト注意: 1 ループで Fable を最低 2 回 (plan + review) 呼ぶ。要所限定の運用前提
 
 ## ディレクトリ構成
 
