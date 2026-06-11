@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "_comment": "knowledge エントリの規約定義。scripts/check.py (PR2 で追加) が読む単一の真実。PyYAML 非依存にするため JSON。frontmatter は flat な key: value のみを想定 (check.py が自前パースする)。level=error が 1 件以上で exit 1 (CI fail)、warn のみは exit 0。",
+  "decisions": {
+    "dir": "knowledge/decisions",
+    "archive_dir": "knowledge/archive",
+    "filename_pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*\\.md$",
+    "required_frontmatter": ["title", "date", "status", "tags"],
+    "optional_frontmatter": ["repo", "issue", "superseded_by"],
+    "status_vocab": ["active", "superseded", "rejected"],
+    "first_section": "## Summary",
+    "summary_max_lines": 3,
+    "rules": [
+      { "id": "decisions.required_keys", "level": "error", "desc": "frontmatter に title/date/status/tags が揃っていること" },
+      { "id": "decisions.flat_frontmatter", "level": "error", "desc": "frontmatter は flat な key: value のみ (ネスト・複数行値は違反)" },
+      { "id": "decisions.status_vocab", "level": "error", "desc": "status は active|superseded|rejected のいずれか" },
+      { "id": "decisions.superseded_by", "level": "error", "desc": "status=superseded には superseded_by が必須" },
+      { "id": "decisions.superseded_location", "level": "error", "desc": "status=superseded のエントリは archive/ 以外に置かれていたら違反" },
+      { "id": "decisions.filename", "level": "error", "desc": "ファイル名は YYYY-MM-DD-kebab-case.md" },
+      { "id": "decisions.first_section_summary", "level": "error", "desc": "先頭セクションが ## Summary" }
+    ]
+  },
+  "standards": {
+    "dir": "knowledge/standards",
+    "required_frontmatter": ["title", "category", "status", "recommended"],
+    "optional_frontmatter": ["alternatives", "decision"],
+    "status_vocab": ["recommended", "allowed", "deprecated"],
+    "rules": [
+      { "id": "standards.required_keys", "level": "error", "desc": "frontmatter に title/category/status/recommended が揃っていること" },
+      { "id": "standards.flat_frontmatter", "level": "error", "desc": "frontmatter は flat な key: value のみ" },
+      { "id": "standards.status_vocab", "level": "error", "desc": "status は recommended|allowed|deprecated のいずれか" }
+    ]
+  },
+  "common": {
+    "max_lines": 300,
+    "iso_date": true,
+    "rules": [
+      { "id": "common.max_lines", "level": "warn", "desc": "300 行超は分割提案" },
+      { "id": "common.future_date", "level": "warn", "desc": "未来日付 (date が今日より後) を警告" },
+      { "id": "common.non_iso_date", "level": "warn", "desc": "非 ISO (YYYY-MM-DD 以外) の日付を警告" },
+      { "id": "common.empty_tags", "level": "warn", "desc": "tags が空" },
+      { "id": "common.tag_style", "level": "warn", "desc": "tags の表記ゆれ (大文字混在・空白含み)" }
+    ]
+  },
+  "skill_lint": {
+    "_comment": "「基準から外れたスキルを warn する」要件。check.py がリポジトリ全体のスキルを点検する。",
+    "skill_dirs": [".", ".claude/skills"],
+    "readme": "README.md",
+    "placement_systems": ["repo-root", ".claude/skills"],
+    "rules": [
+      { "id": "skill.description_present", "level": "warn", "desc": "SKILL.md frontmatter に description が無い" },
+      { "id": "skill.readme_listed", "level": "warn", "desc": "新規スキルが README の一覧に未追記" },
+      { "id": "skill.placement_split", "level": "warn", "desc": "置き場 2 系統 (repo-root と .claude/skills) の不統一を通知" }
+    ]
+  }
+}
