@@ -67,7 +67,7 @@
 - **nuxt-trouble-map** — トラブル報告 PWA (Nuxt 4 + Workers)。報告フォーム / 一覧 / rust-alc-api trouble proxy・auth の配置。
 - **nuxt_dtako_logs-map** — デジタコ運行ログ表示 Nuxt 4 PWA / Workers。地図+テーブルのログビューア、`/api/proxy/*` → rust-alc-api REST proxy の配置と、CLAUDE.md の gRPC-proxy 大幅 drift (実コードは carins 同型 REST proxy)・worker 名ハイフン `nuxt-dtako-logs`・domain `ohishi2.mtamaramu.com` の gotcha。
 - **ref-files-worker-map** — 参照ファイル/spec 保管庫の HTTP+MCP facade。D1(Drizzle)+R2 blob・pre-signed upload/download・bulk-upload Workflow・durable `/mcp`(DO+WS)・`/v1`↔MCP tool 1:1・aud="*"/staging AS pin の gotcha。
-- **rust-flickr-map** — ippoan/rust-flickr (カメラ→Flickr 写真パイプライン、Rust/axum on Cloud Run) の構造 + 運用 SoT。/sync /import /stats の配置、実 org UUID、Scheduler 2 job、digest pin 手動 deploy、SD ローテーションと古い順 upload の競争、「黙って 200」禁止。
+- **rust-flickr-map** — → **移設済み** (claude-skills#59 Wave 1)。本体は対象 repo の [`ippoan/rust-flickr/.claude/skills/rust-flickr-map/`](https://github.com/ippoan/rust-flickr/blob/main/.claude/skills/rust-flickr-map/SKILL.md)。コードと同じ PR で更新され、skills-check CI が鮮度を見る。
 - **cf-flickr-proxy-map** — ippoan/cf-flickr-proxy (rust-flickr の REST proxy / CORS edge Worker) の構造。route/ヘッダ allowlist・org 非注入・Smart Placement・edge 100s 制限。
 - **release-wave-gcp-map** — ippoan/release-wave-gcp (Go/Cloud Run)。Release Wave の canary flip / no-traffic deploy 切替を司る handler の構造。
 - **rust-alc-api-map** — アルコールチェッカー基盤の Rust/Axum Cargo workspace (13 domain crate + gateway/tenko/carins/dtako/trouble の複数バイナリ、PostgreSQL+RLS、Cloud Run)。crate 別ルート・monolith/per-domain 二系統・RLS/migration/Release Wave deploy 分離の gotcha。
