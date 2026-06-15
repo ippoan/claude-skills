@@ -78,6 +78,58 @@ env override: `SECRET_AUTH_ORIGIN` (default `https://auth.ippoan.org`) /
 `SECRET_UPLOAD_ORIGIN` (default `https://security-inventory.ippoan.org`) /
 `SECRET_OAT_FILE`。
 
+## ⚠️ GitHub 投入先 org は **default = ippoan** (他 org は別経路)
+
+`inject-secret.sh` の `--targets github` で投入される org は **proxy 既定 = ippoan** で
+固定。スクリプトに `--gh-org` のような flag は無い (= ohishi-exp など別 org には届かない)。
+
+dtako-scraper / daiun-salary など `ohishi-exp` org の repo から secret を引きたい場合、
+**`inject-secret.sh` だけで投入すると ippoan に入って終わる**ので、ohishi-exp の
+repo workflow からは `secrets.MY_SECRET` を引いても空になる (= ohishi-exp/dtako-scraper#9
+で実際に踏んだ罠、2026-06-15)。
+
+正しい手順 (2 段階、value は context に一切載らない):
+
+```bash
+# (1) 値を GCP に投入 (+ 任意で ippoan org にも mirror)。値は stdin のみ。
+openssl rand -hex 32 | bash "$SKILL" KAGOYA_VPS_SSH_KEY --targets gcp
+
+# (2) GCP の値を他 org に propagate (MCP tool 経由、value parameter なし)
+#     mcp__secret-manger__sync_from_gcp:
+#       { name: "KAGOYA_VPS_SSH_KEY",
+#         gh_org: "ohishi-exp",
+#         targets: ["gh"],
+#         visibility: "all" }     # public repo から引きたい時必須
+```
+
+**前提**: `secrets-inventory-gcp` Cloud Run proxy で **App mode** が有効化されている
+こと (`GH_APP_ID_SECRET_NAME` + `GH_APP_PRIVATE_KEY_SECRET_NAME` set、Refs
+ippoan/secrets-inventory-gcp#51 / #55)。
+
+- App mode 有効なら GitHub App `ippoan-ci-bot` が install されている全 org
+  (ippoan + ohishi-exp + ...) に propagate 可能 (per-org PAT 不要)
+- App mode 無効 / PAT mode のみの場合は proxy が `gh_org not allowed` で 400 を返す
+- App permissions に "Organization permissions → Secrets: Read and write" が
+  無いと 403。caller org で `auto-merge.yml` が動いていれば書込権限はあると推測できる
+- 投入先 GCP secret の per-secret `secretAccessor` を proxy runtime SA
+  (`secrets-inventory-viewer@cloudsql-sv.iam.gserviceaccount.com`) に grant
+  しておかないと proxy が値を読めない (CI_APP_ID 等を新規追加する時の罠)
+
+**判定フロー** (今後の secret 投入時にまず確認すること):
+
+| 投入先 org | 手順 |
+|---|---|
+| ippoan のみ | `inject-secret.sh --targets gcp,github` だけで完結 |
+| ohishi-exp など他 org | `inject-secret.sh --targets gcp` で GCP に置く → `sync_from_gcp(gh_org=...)` MCP tool で propagate |
+| 複数 org | GCP 経由で hub-and-spoke、SoT は GCP 1 つ |
+
+**public repo の visibility 罠**: GitHub org secret は新規作成時の default visibility
+が `"private"` (private repos のみ参照可) のケースあり。public repo の workflow から
+引くなら `sync_from_gcp(..., visibility="all")` を明示する。`inject-secret.sh` 経由
+だと proxy 既定の `all` で作成されるので問題ないが、UI 経由で人手作成した secret は
+要確認 (Settings → Secrets and variables → Actions → 該当 secret の
+"Repository access")。
+
 ## 出力
 
 HTTP code と response の **metadata のみ**。値は一切 echo しない。`200` で成功。
