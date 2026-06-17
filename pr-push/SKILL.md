@@ -117,6 +117,7 @@ settings.json に登録された hooks が以下を自動ブロックする:
 | `pr-state-guard.sh` | MERGED/CLOSED ブランチへの push | 新ブランチを作れ |
 | `no-local-merge.sh` | `gh pr merge` | auto-merge か Web UI を使え |
 | `pr-push-allowlist-guard.sh` | allowlist repo での `pr-push.sh` 起動 | `/wt-direct-push` を使え |
+| `pr-push.sh` 内蔵 | `.github/workflows/` に reusable auto-merge.yml@... を呼ぶ workflow が無い repo | `/ci-init` で full set を入れる (bypass: `PR_PUSH_ALLOW_NO_AUTO_MERGE=1`) |
 
 ### wt-direct-push allowlist repo は `/pr-push` 不可 (script 内蔵ガード)
 
