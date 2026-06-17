@@ -53,6 +53,34 @@ if [[ "${PR_PUSH_ALLOW_ANY:-0}" != "1" ]]; then
   fi
 fi
 
+# Reusable auto-merge guard
+#   .github/workflows/ に auto-merge.yml@... を呼ぶ workflow が 1 つも無ければ
+#   fail。reusable auto-merge 無しで PR を作ると塩漬けになり、tag-release が
+#   古い main から build → release から changes が漏れる事故と同じ穴 (Refs
+#   ippoan/github-mcp-server-rs#28)。bootstrap 時は ci-init で full set を
+#   入れること。正当な理由がある場合だけ PR_PUSH_ALLOW_NO_AUTO_MERGE=1 で bypass。
+if [[ "${PR_PUSH_ALLOW_NO_AUTO_MERGE:-0}" != "1" ]]; then
+  REPO_ROOT=$(git rev-parse --show-toplevel)
+  WF_DIR="$REPO_ROOT/.github/workflows"
+  HAS_AM=0
+  if [[ -d "$WF_DIR" ]]; then
+    # *.yml / *.yaml の中に `/auto-merge.yml@` を呼ぶ行があるか
+    if grep -qrE '/auto-merge\.yml@' "$WF_DIR" 2>/dev/null; then
+      HAS_AM=1
+    fi
+  fi
+  if [[ "$HAS_AM" -eq 0 ]]; then
+    echo "ERROR: reusable auto-merge なし" >&2
+    echo "       $WF_DIR に auto-merge.yml@... を呼ぶ workflow が見つかりません。" >&2
+    echo "       PR を作っても auto-merge 無しで塩漬けになるため block します。" >&2
+    echo "       新規 repo の bootstrap は /ci-init で full set (ci.yml に auto-merge job 内蔵) を生成:" >&2
+    echo "         bash ~/.claude/skills/ci-init/scripts/ci-init.sh" >&2
+    echo "       既存 ci.yml に auto-merge job を追記する場合は ohishi-exp/browser-render-rust を参照。" >&2
+    echo "       どうしてもこのまま PR にしたい場合は PR_PUSH_ALLOW_NO_AUTO_MERGE=1 で再実行。" >&2
+    exit 1
+  fi
+fi
+
 # Push
 echo ">>> push $BRANCH"
 git push -u origin "$BRANCH" 2>&1
