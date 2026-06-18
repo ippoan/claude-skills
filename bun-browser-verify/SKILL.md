@@ -58,8 +58,19 @@ CCoW の会話/ログに 1 度も載らない。
 要点は **「アプリと同じ入力を作る」**。アプリの該当関数 (zip 構築・署名・暗号) を bun スクリプトに
 移植する。ブラウザ専用 API を使う lib は **shim を global 注入**すれば bun で動くことが多い:
 
-- lib が `new DOMParser()` / `Node.ELEMENT_NODE` 等の **global を前提**にしている →
-  `linkedom` の `DOMParser`/`Node` を `globalThis` に注入する (worked example 参照)。
+- lib が `new DOMParser()` / `Node.ELEMENT_NODE` / `XMLSerializer` 等の **global を前提**に
+  している → `linkedom` の対応クラスを **対象 lib の import より前に** `globalThis` へ注入する
+  (再利用スニペット `examples/dom-lib-in-node.ts`、egov 実例は worked example)。順序が肝で、
+  lib が module 評価時に global を捕捉するため import 後の注入では効かないことがある:
+
+  ```ts
+  import { DOMParser, Node, XMLSerializer } from 'linkedom'
+  ;(globalThis as any).DOMParser = DOMParser
+  ;(globalThis as any).Node = Node            // Node.ELEMENT_NODE 等の定数も生える
+  ;(globalThis as any).XMLSerializer = XMLSerializer
+  import { parsePfx, signConfig } from '@ippoan/egov-shinsei-sdk/xmldsig'  // ← 注入後に import
+  ```
+
 - PKCS12/RSA 署名・C14N 等も SDK が `node-forge`/`linkedom` 依存なら **bun でそのまま動く**。
   証明書(テスト用 PFX)等の値は **skill/repo に commit しない** (`.gitignore`)。
 
