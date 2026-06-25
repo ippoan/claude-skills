@@ -93,6 +93,7 @@
 - **create-cr-mcp** — Cloudflare Workers 上に新しい MCP server を `@ippoan/mcp-cf-workers` factory (`createWorkerMcp` stateless `/mcp`) を consume して新規構築する手順。binding_jwt 認証 (auth-worker introspect) + wrangler + CI/deploy + vitest 一式に加え、**claude.ai connector で実際に繋がる**ために必須の OAuth discovery 配線 (origin に `/.well-known/oauth-authorization-server` + `/register` + protected-resource を auth-staging へ proxy) まで含む。雛形は `mcp-cf-workers/examples/cf-access-mcp`。mcp-cf-workers#26 の接続解決知見を codify。
 - **eml-read** — `.eml` (RFC822 メール) を人間可読化するスキル。MIME ヘッダ (RFC2047 `=?UTF-8?B?...?=`) を decode し本文を charset 解決、添付を保存。PPAP (パスワード付き zip + パスワード別メール) の受領にも対応。`ref-files-bulk` で落とした `.eml` をそのまま Read すると読めないため、その前段で使う (相補的)。
 - **nuxt-vitest** / **worker-vitest** — Nuxt / Workers 向け Vitest ハーネス。
+- **durable-object-worker** — Cloudflare Durable Object を no-traffic `versions upload` + Release Wave 運用で作る／切り出す手順。DO migration は versions upload を壊す (error 10211) ため、DO を別 worker に分離し app から **service binding** (external DO binding ではなく) で叩き、専用の `wrangler deploy` workflow で出す。class 削除の catch-22 (10061/10064)・deploy ordering・Node 22・coverage 100% gate・WS 検証を収録。reference: `ippoan/nuxt-items` + `nuxt-items-sync` (#290)。
 - **type-safe-pipeline** — 型安全なデータパイプラインの足場を作る。
 - **verify-env** — 環境変数を検証する。
 - **repo-migrate** / **package-publish-debug** — リポジトリ・パッケージ関連のその他ツール。
