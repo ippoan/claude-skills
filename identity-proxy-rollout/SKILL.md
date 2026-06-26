@@ -128,6 +128,51 @@ auth バイパス・viewer の認証 bypass は壊さない**。迷う大きな�
 `paths` に `server/` 等が含まれるなら proxy 記述を更新 + `generated-from` を code commit sha に
 bump (skills-check map-check)。
 
+## 実運用で踏んだ追加 gotcha (2026-06 Group B 横展開、items/trouble/notify/dtako-admin)
+
+CI/typecheck が緑でも見逃す **runtime / harness の罠**。横展開時は必ず確認:
+
+### A. path 二重 `/api/` → backend 404 (runtime、テストで捕まらない)
+
+`apiBase = '/api/proxy'` にして、consumer の fetch path が **既に `/api/` を含む**
+(`/api/items` `/api/trouble/tickets` 等) 場合、`createIdentityProxyHandler` の
+**default `pathPrefix: '/api/'`** が更に前置 → `backend/api/api/...` で **404**。
+テストは fetch を mock するので**素通りし、staging で初めて 404 が出る** (items-staging で実害)。
+
+- **判定**: consumer の fetch path に `/api/` が含まれるか。
+  - 含む (例: `request('/api/trouble/tickets')`、apiBase=`/api/proxy`) → **`pathPrefix: '/'`** を指定
+  - 含まない (例: `$fetch('/api/proxy' + '/notify/recipients')`、path は `/notify/...`) → default のままで正しい
+- **必ず staging で実 URL を叩いて 404 が出ないか確認**する (テスト緑 ≠ runtime OK)。
+- 修正例: nuxt-items#35 / nuxt-dtako-admin (proxy に `pathPrefix: '/'`)。
+
+### B. `defineEventHandler` / `createError` の Nitro auto-import が vitest で crash
+
+proxy route が `defineEventHandler` / `createError` を **Nitro server auto-import** に
+頼っていると、`@nuxt/test-utils` の vitest 環境 (app runtime) では server auto-import が
+注入されず、**route を import した瞬間に `defineEventHandler is not defined` で module load
+crash** → その test suite が `0 test` で fail。さらに **API Integration job (全テストを
+`vitest run` で live 実行) も同じ crash で巻き添え**になる。
+
+- **対策**: proxy route で `import { defineEventHandler, createError } from 'h3'` と**明示 import**
+  する (`useRuntimeConfig` は test の `mockNuxtImport` / prod の Nitro auto-import で解決されるので
+  bare で可)。他の server route が既に h3 明示 import なら合わせる。
+
+### C. proxy.test.ts の harness は repo ごとに違う
+
+雛形 (dtako_logs) は `vi.hoisted` で `globalThis.defineEventHandler` / `createError` を stub +
+`vi.stubGlobal('useRuntimeConfig')` する方式。だが **`@nuxt/test-utils` runtime を使う repo**
+ ではこれが効かず (`[nuxt] instance unavailable`、`createErrorMock` 未呼び出し) fail する。
+
+- その repo の**既存テストの nuxt グローバル mock 規約に合わせる**:
+  `mockNuxtImport('useRuntimeConfig', …)` で runtimeConfig 注入、`createError` は実体のまま
+  throw された H3Error を `toMatchObject({ statusCode: 503 })` で assert、`defineEventHandler` は
+  `vi.mock('h3', …)` で identity 化 (B の明示 import と対)。
+- 脆い assertion (createError 呼び出し検証 / backendUrl が useRuntimeConfig を呼ぶ検証) は
+  **落として green を優先**してよい (proxy 本体の挙動は auth-worker 側でテスト済み)。
+- **agent に委譲する時は「ローカルで vitest を必ず実行してから push」と明記**する。未実行だと
+  これらが CI で初めて露呈し往復が増える (items/notify は実行済みで一発 green、trouble/dtako-admin は
+  未実行で CI 赤→修正往復)。
+
 ## 注意
 
 - `secret/値` を会話・log・tool param に出さない (binding の resolve のみ)。
