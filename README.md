@@ -48,6 +48,8 @@
 - **cross-repo-symbol-index** — 30+ repo を跨ぐ構造把握の結論。symbol が要る時はその場でローカル ctags (全 31 repo で 3.8 秒)、保存はしない。唯一永続的に要るのは手書き skill が code と乖離してないかの鮮度チェックで、SessionStart hook が `generated-from` の tree-sha 比較で行う。横断 index を D1/CI で持つ過剰設計は撤去した経緯も記録。
 - **plan-with-fable** — コードを読んで詳細な実装計画と PR 分割を Fable に作らせる (`context: fork` + `fable-advisor` agent)。Issue の高レベル計画を実装可能なタスクに落とす段階で使う。使い方: `/plan-with-fable <課題 / Issue の内容>`。下記「Fable plan/review 開発ループ」参照。
 - **review-with-fable** — 実装が終わった差分 (`git diff origin/main...HEAD` を skill 本文に注入) を Fable にレビューさせ、バグ・設計の綻び・テスト漏れを重大度順で返させる。下記「Fable plan/review 開発ループ」参照。
+- **plan-with-opus** — Fable へのアクセスが無い環境向けの代替。`/plan-with-fable` と同じ実装計画タスクを `opus-advisor` agent (`model: opus`、`context: fork`) で行う。使い方: `/plan-with-opus <課題 / Issue の内容>`。下記「Sonnet→Opus 開発ループ」参照。
+- **review-with-opus** — 同じく `/review-with-fable` の Opus 版。`git diff origin/main...HEAD` を `opus-advisor` agent に渡して重大度順のレビューを返させる。下記「Sonnet→Opus 開発ループ」参照。
 - **repo-map** — 1 つの repo の構造ナビゲーション skill (`<repo>-map`) を作る/更新するメタ skill。`session-start-skill-coverage` hook が「skill 無し」/「鮮度切れ」を警告した repo に対し、ローカル ctags + 構造調査で map を起こし `generated-from: <repo>:<tree-sha>` を付ける。
 - **auth-worker-map** — → **移設済み** (claude-skills#59 Wave 2)。本体は [`ippoan/auth-worker/.claude/skills/auth-worker-map/`](https://github.com/ippoan/auth-worker/blob/main/.claude/skills/auth-worker-map/SKILL.md)。コードと同じ PR で更新され、skills-check CI が鮮度を見る。
 
@@ -126,6 +128,31 @@ Opus を司令塔に置きつつ、判断が効く「計画」と「レビュー
 - 段階 3 の `opusplan` env (`ANTHROPIC_MODEL=opusplan` + pin) は別途設定済みであること
 - CCoW では agent / skill ともリポジトリにコミットして使う (`~/.claude` は不可)
 - コスト注意: 1 ループで Fable を最低 2 回 (plan + review) 呼ぶ。要所限定の運用前提
+
+## Sonnet→Opus 開発ループ (Fable 非アクセス環境向け代替)
+
+Fable 開発ループと同じ「実装は安いモデルに任せ、判断が効く plan/review だけ上位モデルに切り出す」構成を、組織の Fable アクセスが無い環境向けに Opus で再現したもの。
+
+| 段階 | 役割 | モデル | 手段 |
+|---|---|---|---|
+| 1. Plan (web) | 高レベル計画 → Issue 化 | 人 + web | issue-design |
+| 2. 実装 Plan | コード読み → 詳細 plan + PR 分割 | **Opus** | `/plan-with-opus` |
+| 3. 管理 + 実装 | タスク登録・管理 → 実装 | Sonnet (セッションのデフォルトモデル) | — |
+| 4. Review | 差分レビュー | **Opus** | `/review-with-opus` |
+
+両 skill は共有エージェント [`opus-advisor`](.claude/agents/opus-advisor.md) (`model: opus`、read-only、実装しない) を `context: fork` で起動する。fork は会話文脈を見ないため、review は `` !`git diff` `` 注入、plan は `$ARGUMENTS` への課題の明示渡し + 自前のコード読みで補う。`fable-advisor` との違いは `model:` フィールドのみで、SKILL.md の構造・呼び出し方は完全に対称。
+
+### Fable 版との使い分け
+
+- 組織に Fable アクセスがある場合は `plan-with-fable` / `review-with-fable` を優先する (1M context で大規模リポジトリの実装 plan を読ませやすい)。
+- Fable アクセスが無い、または `opusplan` env を別途設定していないセッションでは `plan-with-opus` / `review-with-opus` を使う。段階 3 の実装は `opusplan` のような自動切替を前提とせず、セッションのデフォルトモデル (Sonnet) でそのまま進める。
+
+### 前提条件
+
+- Claude Code から Opus が利用可能であること (Opus 4.8 等)
+- `CLAUDE_CODE_SUBAGENT_MODEL` が**未設定**であること (設定済だと agent の `model: opus` を上書きする)
+- CCoW では agent / skill ともリポジトリにコミットして使う (`~/.claude` は不可)
+- コスト注意: 1 ループで Opus を最低 2 回 (plan + review) 呼ぶ。要所限定の運用前提
 
 ## ディレクトリ構成
 

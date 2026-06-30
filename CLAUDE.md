@@ -14,7 +14,7 @@
 | 置き場 | スキル |
 |---|---|
 | **repo 直下** (大多数) | `auth-worker-map/`, 各 `<repo>-map/`, `repo-map/`, `cross-repo-symbol-index/`, `pr-push/`, `coverage-*`, `egov-*`, `open-multirepo-smoke/` … |
-| **`.claude/skills/` 配下** (少数) | `ippoan-infra-map`, `gh-actions-phantom-permission`, `large-codebase-setup`, `open-multirepo`, `ui-preview`, `plan-with-fable`, `review-with-fable` |
+| **`.claude/skills/` 配下** (少数) | `ippoan-infra-map`, `gh-actions-phantom-permission`, `large-codebase-setup`, `open-multirepo`, `ui-preview`, `plan-with-fable`, `review-with-fable`, `plan-with-opus`, `review-with-opus` |
 
 この 2 系統への分裂は移行時の歴史的経緯で、**統一方針は未確定**。歴史的に直下が
 多数派なので当面は直下に倣うのが無難 (Claude Code 標準パスは `.claude/skills/` の方)。
@@ -49,6 +49,15 @@
 を `context: fork` で起動する。前提条件・運用は `README.md` の
 「Fable plan/review 開発ループ」を参照 (Refs #68)。
 `CLAUDE_CODE_SUBAGENT_MODEL` を設定すると `model: fable` が上書きされ無効化される点に注意。
+
+## Sonnet→Opus 開発ループ (Fable 非アクセス環境向け代替)
+
+Fable へのアクセスが無い環境向けに、同じ構成を Opus で再現した skill 2 本
+(`/plan-with-opus` / `/review-with-opus`、いずれも `.claude/skills/` 配下) がある。
+共有エージェント `.claude/agents/opus-advisor.md` (`model: opus`、read-only) を
+`context: fork` で起動する点・SKILL.md の構造は `fable-advisor` 版と完全に対称
+(差分は `model:` フィールドのみ)。前提条件・Fable 版との使い分けは `README.md` の
+「Sonnet→Opus 開発ループ」を参照。こちらも `CLAUDE_CODE_SUBAGENT_MODEL` 未設定が前提。
 
 ## repo-policy
 
