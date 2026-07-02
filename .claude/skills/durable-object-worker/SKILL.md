@@ -3,11 +3,13 @@ name: durable-object-worker
 description: >
   Cloudflare Durable Object (DO) を ippoan/ohishi スタック (Nuxt/Worker + frontend-ci
   + Release Wave の no-traffic versions upload 運用) で「作る／既存 worker から切り出す」
-  ための設計判断と手順。DO migration が versions upload を壊す (error 10211) ため
-  no-traffic release を維持するには **DO を別 worker に分離し app から service binding で
-  叩く**のが定石。class 削除の catch-22 (10061/10064)・bespoke deploy workflow・
-  coverage 100% gate・deploy ordering・WS 検証までを 1 枚にまとめる。
-  reference 実装: ippoan/nuxt-items + nuxt-items-sync (#290)。
+  ための設計判断と手順。**新規**の DO migration を no-traffic `versions upload` に
+  含めると error 10211 になる (既に適用済みの migration しか持たない worker は
+  no-traffic のままで良い、`ippoan/auth-worker` が実例) ため、これから新規に DO を
+  追加する時は **DO を別 worker に分離し app から service binding で叩く**のを標準にする。
+  class 削除の catch-22 (10061/10064)・bespoke deploy workflow・coverage 100% gate・
+  deploy ordering・WS 検証までを 1 枚にまとめる。
+  reference 実装: ippoan/nuxt-items + workers/items-sync (#290)。
   トリガー:「Durable Object 作る」「DO 追加」「DO worker」「new_sqlite_classes」
   「error 10211」「10061」「10064」「versions upload できない」「migration で deploy 不可」
   「DO を no-traffic で出したい」「service binding で DO」「DO 100% になる」
@@ -18,22 +20,51 @@ description: >
 
 ippoan/ohishi の Worker は frontend-ci + Release Wave で **no-traffic
 `wrangler versions upload`** (= deploy では traffic を動かさず、flip で明示的に
-100% 化) を標準とする。**DO はこの運用と相性が悪い**ので、最初に下の鉄則を押さえる。
+100% 化) を標準とする。**「新規」DO の追加はこの運用と相性が悪い** (既存 DO を
+持つ worker がそのまま no-traffic を続けること自体は問題ない) ので、最初に
+下の鉄則を押さえる。
 
-## 鉄則: DO migration を含む worker は versions upload できない (error 10211)
+## 鉄則: 「新規」DO migration を versions upload に含めると error 10211
 
 > Cloudflare 公式: "Durable Object migrations are atomic operations and cannot be
 > gradually deployed... new Worker versions with new migrations cannot be uploaded."
-> migration は `wrangler deploy` (= 即 100% traffic) でしか適用できない。
-> **no-traffic / 0% / gradual で migration を当てる wrangler 引数は存在しない。**
+> **未適用の** migration は `wrangler deploy` (= 即 100% traffic) でしか適用できない。
+> **no-traffic / 0% / gradual で新規 migration を当てる wrangler 引数は存在しない。**
 
-つまり `[[migrations]]` を持つ worker は:
-- `wrangler versions upload` → **10211 で必ず失敗**
-- `wrangler deploy` → 適用できるが **その version が即 100%**
+**誤解しやすい点**: 10211 は「worker が `[[migrations]]` を持っている」ことでは
+発火しない。発火するのは **その version upload が、まだ適用されていない
+migration tag を新たに含む時**だけ。つまり:
 
-→ **app 本体 (no-traffic release したい worker) に DO を定義してはいけない。**
+- `[[migrations]]` の class が **1 つも適用されていない** worker に、
+  new_sqlite_classes 入りの version を `versions upload` → **10211 で失敗**
+- **既に適用済み** (= 過去に一度 `wrangler deploy` で通した) migration しか
+  持たない worker を、その後 `versions upload` (no-traffic) で release
+  → **成功する** (適用対象の新規 migration が無いため)。
+  実例: `ippoan/auth-worker` は `LineworksWebhookDO` / `McpSession` /
+  `IssueRoomDO` の DO + migration を **app 本体**に持ったまま、
+  `release_no_traffic: true` (default) の `wrangler versions upload` で
+  問題なく release され続けている (10211 を踏んでいない)。
 
-## 定石: DO を別 worker に分離し、app からは service binding で叩く
+→ 実務上の結論: **「今回新しく DO を追加する」変更を no-traffic release の
+worker に直接混ぜると、その 1 回の deploy で 10211 を踏む。** 一度別ルート
+(後述の bespoke `wrangler deploy` か、その回だけ `release_no_traffic: false`
+に切り替える一時的な real deploy) で migration を適用してしまえば、
+以降その worker に新しい DO/migration を追加しない限り no-traffic release を
+続けられる。「DO を持つ worker は永久に no-traffic 化できない」わけではない。
+
+## 定石 (推奨、必須ではない): DO を別 worker に分離し、app からは service binding で叩く
+
+上の鉄則の通り「1 回だけ real deploy を挟めば app に DO を直接置いても no-traffic
+運用は続けられる」が、それでも **新規 DO は別 worker に分離するのを標準にする**。
+理由は 10211 回避そのものではなく:
+- 新しい DO/migration を追加する度に「今回だけ real deploy」の一時運用を
+  手動で管理するのは事故りやすい (`release_no_traffic: false` の戻し忘れ等)
+- class 削除時の catch-22 (10061/10064、下記) を踏まない
+- `nuxt-items` (→ `workers/items-sync`) が実際にこの形で運用中 (2026-06、#290)
+
+`auth-worker` のように **既に long-standing な DO を持つ既存 worker** は
+無理に分離し直す必要はない (現に no-traffic のまま動いている)。分離が効くのは
+**「これから新規に追加する」DO**に対して。
 
 ```
 [app worker]  (no-traffic versions upload 維持、migration 0)
@@ -174,7 +205,8 @@ WS の **upgrade リクエストは Workers Observability に記録されない*
 
 ## 最小チェックリスト (新規 DO を足す時)
 
-1. app は no-traffic release? → **DO を app に置かない。別 worker に分離**
+1. app は no-traffic release? → **新規 DO なら app に置かず別 worker に分離するのが
+   標準** (既存 DO を持つ worker を無理に分離し直す必要はない、鉄則参照)
 2. DO worker: `[[durable_objects.bindings]]` + `[[migrations]] new_sqlite_classes` +
    default fetch で routing + (必要なら) `[[secrets_store_secrets]]`
 3. app: `[[services]]` binding に変更、`durable_objects.bindings`/`migrations` は **0**
