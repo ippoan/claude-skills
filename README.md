@@ -27,6 +27,7 @@
 - **worktree-cleanup** — 古い worktree を一括掃除する。
 - **tag-release** — タグ/リリースを安全に切る。
 - **ci-init** / **ci-cache-patterns** — CI のブートストラップ・キャッシュパターン補助。
+- **create-preview** — Cloudflare Workers front repo に「push だけで更新される軽量プレビュー環境」を追加する (`wrangler.toml` の `[env.preview]` + `ci-workflows` の軽量 `preview-deploy.yml` caller + CLAUDE.md URL 表)。CF Token・dashboard 手動設定は不要、既存 CI の credential と `*-preview.ippoan.org` の CF Access wildcard app をそのまま使う。ippoan/nuxt-trouble が reference 実装 (Refs ippoan/secrets-inventory#85)。
 - **gh-actions-phantom-permission** — `GITHUB_TOKEN` の無効な permission スコープ (例: `administration: write` は workflow-token ではなく fine-grained PAT のスコープ) が原因の GitHub Actions "phantom 0-job failure" run のデバッグ。
 - **auto-merge-deploy-race** — CI 内蔵の auto-merge が deploy (staging cutover) を待たずに merge → branch 削除で cutover が cancel され、**deploy 失敗が無音化する** race の検知・復旧・予防 (rust-alc-api#391 で enforce が 2 回未適用になった実害から)。「merged なのに staging に反映されない」時に参照。
 - **gh-actions-cross-org-secrets** — cross-org reusable workflow で secret が消える確定知識 (ci-workflows#125〜#127)。`secrets: inherit` の境界判定は **run の repo org 基準**で、ohishi-exp run では明示受領済み secret も nested inherit で落ちる → 全 hop 明示転送が修正。値を出さない可視性 probe と「re-run は reusable sha を pin する」罠も収録。
