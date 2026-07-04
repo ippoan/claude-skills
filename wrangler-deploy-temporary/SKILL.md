@@ -7,10 +7,15 @@ description: >
   ブロックの有無、実 colo の確認) に最適。CCoW のような Cloudflare アカウント
   未接続の環境でも動く。デプロイ結果 URL 自体が Cloudflare の JS challenge に
   守られるため curl では読めず、cdp-relay 等の実ブラウザ経由で読む必要がある点に
-  注意。
+  注意。real credential を要する実ログインフローの検証は、worker 自身が返す
+  HTML フォームに手元でユーザーが直接入力する方式 (credential は CCoW を一切
+  経由しない) + cookie state をブラウザの hidden field に往復させる「再ログイン
+  不要の探索 UI」パターンで安全に行える。
   トリガー: 「wrangler deploy --temporary」「一時 Worker」「ephemeral worker」
   「egress 疎通確認」「Workers から到達できるか」「WAF ブロックされるか PoC」
-  「datacenter IP ブロック確認」「一時アカウント」「claim URL」「60分で失効」等。
+  「datacenter IP ブロック確認」「一時アカウント」「claim URL」「60分で失効」
+  「実ログイン検証」「credential をブラウザで直接入力」「cookie state 往復」
+  「毎回ログインさせたくない」「探索 UI」等。
 ---
 
 # wrangler-deploy-temporary — 認証なし一時 Worker で egress PoC
@@ -142,6 +147,76 @@ blocker だった (fable-advisor レビューで最優先指摘)。
 全4件 `200 OK`、WAF拒否・bot challenge・geo-block 無し。実装着手前に
 blocker を数分で潰せた。実装してから気づいていたら手戻りが大きかった。
 
+## 実ログインフローの検証 (credential をブラウザ直接入力 + cookie state 往復)
+
+**「secret を伴う検証はしない」の例外**: 疎通確認だけでなく `etcLogin()` の
+ような**実 credential での POST ログインチェーン自体**を検証したい場合、
+credential を worker の env/コードに埋め込むのではなく、**worker 自身が
+返す HTML `<form>` にユーザーが手元ブラウザで直接入力**させれば安全に検証
+できる (実例: ohishi-exp/nuxt-dtako-admin#134、etc-meisai.jp ログイン検証)。
+credential は「ブラウザ → この worker (Cloudflare Workers 実行環境)」だけを
+通り、CCoW / Claude のツール呼び出し (tool param・log・会話) には一切載らない
+— `browser_cookies` の cookie 委譲パターンと同じ安全性の考え方。
+
+### 毎回ログインさせない: cookie state をページの hidden field に往復させる
+
+`wrangler deploy --temporary` は HMR ではない — コード変更のたびに
+redeploy が必要で、かつ deploy ごとに worker のメモリ状態はリセットされる。
+ロジックを試行錯誤する間 **毎回ユーザーに credential を再入力させるのは避ける
+べき** (UX が悪いだけでなく、変更点の検証速度が落ちる)。
+
+対策: ログイン成功後の cookie jar (`{name,value}[]`) と現在ページの
+`{url, html}` を **JSON → UTF-8-safe base64** にして 1個の hidden field に
+乗せ、次の一手 (`submitPage(...)`/`goOutput(...)` から抽出した遷移先 URL) を
+选ぶボタンフォームと一緒にレンダリングする。ユーザーはボタンをクリックする
+だけで良く、worker を redeploy してもこの state を使い回せる:
+
+```ts
+interface StateBlob { cookies: [string, string][]; url: string; html: string }
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary); // Latin1 前提の btoa に生バイトを渡す (UTF-8 安全)
+}
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+function encodeState(cookies: Map<string, string>, url: string, html: string): string {
+  const blob: StateBlob = { cookies: [...cookies.entries()], url, html };
+  return bytesToBase64(new TextEncoder().encode(JSON.stringify(blob)));
+}
+function decodeState(token: string): StateBlob {
+  return JSON.parse(new TextDecoder("utf-8").decode(base64ToBytes(token)));
+}
+```
+
+`Buffer` (nodejs_compat) は型定義 (`@types/node`) が無いと `tsc` が
+`Cannot find name 'Buffer'` で落ちる環境があるため、`btoa`/`atob` +
+`TextEncoder`/`TextDecoder` で UTF-8 safe base64 を自前実装する方が依存が
+少ない。日本語 HTML を含む cookie state でも文字化けしない。
+
+ページ内の `onclick="submitPage('frm','<url>')"` / `onclick="goOutput(...,
+'<url>', ...)"` を正規表現で抽出し、各遷移先を1つのボタン付き `<form
+method=POST>` として列挙してレンダリングすれば、ユーザーは「次の一手」を
+クリックで選ぶだけで遷移を進められる (`target=フォームhidden`、
+`state=<上記トークン>` を次の worker endpoint に POST)。
+
+**属性値の quote ネストに注意**: `onclick="submitPage('a','b')"` のように
+**二重引用符属性の中に単引用符の JS 引数**が入るパターンでは、素朴な
+`onclick=["']([^"']*)["']` は最初の内側単引用符で打ち切られ
+`"submitPage("` までしか取れない。二重引用符区切りを優先し、無ければ
+単引用符区切りにフォールバックする:
+
+```ts
+function extractOnclick(tag: string): string {
+  return tag.match(/onclick="([^"]*)"/i)?.[1] ?? tag.match(/onclick='([^']*)'/i)?.[1] ?? "";
+}
+```
+
 ## アンチパターン
 
 - **`curl` で一時 Worker の結果を読もうとして「動いてない」と誤判断する** —
@@ -152,6 +227,11 @@ blocker を数分で潰せた。実装してから気づいていたら手戻り
 - **claim URL を勝手に開いて恒久化する** — 別 Cloudflare アカウントへの
   紐付けはユーザー判断。PoC 目的なら開かず自然失効させる
   (5) — セッション終了を待つだけでよく、明示的な削除操作は不要
-- **本番 secret や認証情報を PoC Worker に埋め込む** — 一時アカウントは
-  誰でも claim URL を知れば覗ける前提で、疎通確認 (GET/ステータスコード) に
-  留める。ログイン POST 等 secret を伴う検証はしない
+- **credential を worker のコード/env/`--var` に埋め込む** — 一時アカウントは
+  誰でも claim URL を知れば覗ける前提。credential が要る検証は上記の
+  「ブラウザの HTML フォームに直接入力させる」方式を使い、worker のソース・
+  ログ・response には一切出さない
+- **cookie state の生 JSON を Claude のツール呼び出し (browser_eval の
+  expression 文字列等) に直接埋め込む** — cookie はセッション capability。
+  base64 トークンごと `<input type=hidden>` に乗せてブラウザ内で完結させ、
+  Claude 側の tool call param には個々の cookie 値を書かない
