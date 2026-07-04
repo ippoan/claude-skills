@@ -1,26 +1,25 @@
 name: auto-merge
 
-# Flips the "auto-merge" flag on the PR via gh CLI. The actual merge gate
-# is the branch protection rule on the target branch, not this workflow.
+# ippoan/ci-workflows の auto-merge.yml reusable workflow を呼ぶ。GitHub App
+# (CI_APP_ID/CI_APP_PRIVATE_KEY) の installation token で `gh pr merge --auto`
+# を実行する。
 #
 # Prerequisites (one-time, in repo Settings):
 #   - General → "Allow auto-merge" is ON
 #   - Branches → main protection requires the `ci / shellcheck` check
 #     from test.yml. Without that, this would merge instantly.
 #
-# Why TAG_RELEASE_PAT (org secret) instead of GITHUB_TOKEN:
-#   GitHub suppresses workflow runs for events triggered by GITHUB_TOKEN
-#   (docs: "events triggered by the GITHUB_TOKEN will not create a new
-#   workflow run", except workflow_dispatch / repository_dispatch). So a PR
-#   auto-merged under GITHUB_TOKEN pushes to main as github-actions[bot] and
-#   that push does NOT fire pages.yml / test.yml → the Pages site never
-#   auto-deploys (had to dispatch manually). Enabling auto-merge with a
-#   user-scoped PAT makes the eventual merge push attributed to a real user,
-#   so the on:push workflows run normally. Falls back to GITHUB_TOKEN if the
-#   PAT isn't present (auto-merge still works, just without downstream runs).
+# 旧実装は個人 PAT (TAG_RELEASE_PAT、GITHUB_TOKEN だと downstream workflow
+# (pages.yml 等) が発火しないため個人 PAT を使っていた) を使っており、
+# Claude Code session 等が同一アカウントで GitHub API を大量に叩くと GraphQL
+# rate limit を共有して枯渇し `gh pr merge --auto` が間欠的に失敗していた
+# (Refs #90 のフォローアップ)。GitHub App token は個人アカウントとは別の
+# rate-limit バケットを持ち、かつ push actor が github-actions[bot] にならず
+# downstream workflow を正常に発火させる (ci-workflows#65 で同種の問題を
+# 解決済み)。
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, ready_for_review, reopened, synchronize]
 
 permissions:
@@ -28,12 +27,7 @@ permissions:
   contents: write
 
 jobs:
-  enable-auto-merge:
+  auto-merge:
     if: github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
-    steps:
-      - name: Enable auto-merge (squash)
-        env:
-          GH_TOKEN: ${{ secrets.TAG_RELEASE_PAT || secrets.GITHUB_TOKEN }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge --auto --squash "$PR_URL"
+    uses: ippoan/ci-workflows/.github/workflows/auto-merge.yml@main
+    secrets: inherit
