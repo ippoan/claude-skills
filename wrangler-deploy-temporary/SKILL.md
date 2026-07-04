@@ -31,6 +31,25 @@ CCoW のように Cloudflare アカウントに未ログインな環境で、
 - 「Workers 版で本当に動くか」を実装前に安く検証したい (実装してから気づくと
   高くつく — dtako-scraper#22 / browser-render-rust#14 の経緯参照)
 
+## credential を伴う login 検証には使わない (egress MITM)
+
+このハーネスは **到達性 / status code の疎通確認**用。**実 credential を使う login の
+検証には向かない**。理由は 2 つ:
+
+1. **手元で `wrangler deploy --temporary --var USER:x --var PASS:y` する場合**: `--var` は
+   **暗号化されない平文 var** として worker に焼かれる。60分揮発の一時アカウントとはいえ
+   claim URL を知る者は覗ける前提なので、恒久 credential は載せない。
+2. **CCoW から temp deploy する場合**: CCoW の outbound HTTPS は Anthropic egress gateway が
+   **TLS を MITM 終端**する (外部サイトの証明書 issuer が `O=Anthropic, CN=Egress Gateway
+   SDS Issuing CA`、`openssl s_client` で実測可能)。よって **CCoW から login POST すると
+   credential が gateway 内で平文復号される**。temp worker の `--var` に credential を渡す/
+   worker が login する、どちらも gateway を平文で通る。
+
+→ credential を伴う login を検証したいときは **`browser-cookie-borrow` skill** (login だけ
+手元ブラウザに委譲し cookie を借りて CCoW が認証後操作) か、**手元 `git pull` + `bun run` /
+`wrangler dev`** (credential 手元 `.env`) を使う。本 skill は「実 CF colo egress から対象
+サイトに **到達できるか** (WAF / datacenter IP ブロックの有無)」の確認に限定する。
+
 ## 前提
 
 - Wrangler **4.102.0 以上** (`npx wrangler --version` で確認)
