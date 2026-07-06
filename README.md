@@ -53,6 +53,7 @@
 - **review-with-fable** — 実装が終わった差分 (`git diff origin/main...HEAD` を skill 本文に注入) を Fable にレビューさせ、バグ・設計の綻び・テスト漏れを重大度順で返させる。下記「Fable plan/review 開発ループ」参照。
 - **plan-with-opus** — Fable へのアクセスが無い環境向けの代替。`/plan-with-fable` と同じ実装計画タスクを `opus-advisor` agent (`model: opus`、`context: fork`) で行う。使い方: `/plan-with-opus <課題 / Issue の内容>`。下記「Sonnet→Opus 開発ループ」参照。
 - **review-with-opus** — 同じく `/review-with-fable` の Opus 版。`git diff origin/main...HEAD` を `opus-advisor` agent に渡して重大度順のレビューを返させる。下記「Sonnet→Opus 開発ループ」参照。
+- **subagent-orchestration** — CCoW の重コンテキストで sonnet サブエージェントを thrash させずに回す運用書 (親=Opus 向け)。再利用 agent 定義 6 種 (`.claude/agents/`: `planner`/`plan-reviewer`/`coder`/`code-reviewer`/`diet-worker`/`diet-reviewer`、全 sonnet・tools 限定・短ターン手順を焼き込み) を `agentType` で起動し、planner→coder→review の開発ループと diet-worker→diet-reviewer の CLAUDE.md ダイエットループを回す。「注入はセッション開始スナップショット=途中削除は空振り／短ターンなら full context でも survive」の実測知見と、wave 構成・親の検証チェックリストを持つ (設計: fable-advisor、ippoan/claude-md#90)。
 - **repo-map** — 1 つの repo の構造ナビゲーション skill (`<repo>-map`) を作る/更新するメタ skill。`session-start-skill-coverage` hook が「skill 無し」/「鮮度切れ」を警告した repo に対し、ローカル ctags + 構造調査で map を起こし `generated-from: <repo>:<tree-sha>` を付ける。
 - **auth-worker-map** — → **移設済み** (claude-skills#59 Wave 2)。本体は [`ippoan/auth-worker/.claude/skills/auth-worker-map/`](https://github.com/ippoan/auth-worker/blob/main/.claude/skills/auth-worker-map/SKILL.md)。コードと同じ PR で更新され、skills-check CI が鮮度を見る。
 
