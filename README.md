@@ -61,6 +61,7 @@
 
 `repo-map` メタ skill の手順で各 repo を索引化した構造ナビゲーション skill 群。frontmatter に `generated-from: <repo>:<tree-sha>` を持ち、`session-start-skill-coverage` hook が coverage と鮮度を点検する。基盤 5 repo (claude-md / claude-hooks / mcp-relay-rs / cc-relay / mcp-cf-workers) は `ippoan-infra-map` の `generated-from` で一括カバー。
 
+- **AlcoholChecker-map** — 本体は [`ippoan/AlcoholChecker/.claude/skills/AlcoholChecker-map/`](https://github.com/ippoan/AlcoholChecker/blob/master/.claude/skills/AlcoholChecker-map/SKILL.md)。コードと同じ PR で更新され、skills-check CI が鮮度を見る。
 - **HealthConnectReader-map** — → **移設済み** (claude-skills#59 Wave 3)。本体は [`ippoan/HealthConnectReader/.claude/skills/HealthConnectReader-map/`](https://github.com/ippoan/HealthConnectReader/blob/main/.claude/skills/HealthConnectReader-map/SKILL.md)。コードと同じ PR で更新され、skills-check CI が鮮度を見る。
 - **HealthConnectReaderWorker-map** — → **移設済み** (claude-skills#59 Wave 3)。本体は [`ippoan/HealthConnectReaderWorker/.claude/skills/HealthConnectReaderWorker-map/`](https://github.com/ippoan/HealthConnectReaderWorker/blob/main/.claude/skills/HealthConnectReaderWorker-map/SKILL.md)。コードと同じ PR で更新され、skills-check CI が鮮度を見る。
 - **alc-app-map** — → **移設済み** (claude-skills#59 Wave 3)。本体は [`ippoan/alc-app/.claude/skills/alc-app-map/`](https://github.com/ippoan/alc-app/blob/main/.claude/skills/alc-app-map/SKILL.md)。コードと同じ PR で更新され、skills-check CI が鮮度を見る。
