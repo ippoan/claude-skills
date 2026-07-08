@@ -14,6 +14,9 @@ description: >
   「cdp-relay.ippoan.org」「extension_not_connected」「remote-allow-origins」等。
   cdp-browser (Tailscale 直 CDP) / cdp-agent (MSI quick tunnel) とは別経路 — こちらは
   UDP 封鎖 + 手元 NAT 越えが要る CCoW 向けの拡張 → WSS/443 合流方式。
+  通常の UI 動作確認 (画面遷移・表示・クリック・コンソールログ) だけなら公式
+  Claude in Chrome 拡張 (Desktop/Cowork 経由) の方が pairing 不要で速い — reflex で
+  cdp-pair に入る前に claude-in-chrome skill の使い分け早見表を参照。
 ---
 
 # cdp-pair — 手元 Chrome を cdp-relay 経由でペアリングして操作
@@ -21,6 +24,13 @@ description: >
 CCoW コンテナは手元 Chrome へ直接 CDP 接続できない (Tailscale 網外 + UDP 封鎖)。
 唯一通る TCP/443 の WSS で、手元拡張と CCoW を Cloudflare DO に合流させて操作する。
 このスキルはその合流 (= pairing) を Claude が主導するための手順を定める。
+
+> **先に経路選定**: 通常の UI 動作確認 (画面遷移・表示・クリック・コンソールログ・
+> CF Access 配下の目視) だけなら、公式 **Claude in Chrome** 拡張を Desktop / Cowork から
+> 使う方が pairing 不要で速い。cdp-pair が必須なのは「CCoW セッション自身が操作する」
+> 「httpOnly Cookie ログイン委譲 (`browser_cookies`)」「ヘッダ/ボディ込み network 解析・
+> 生 CDP (経路 A)」の場面。使い分け早見表は **claude-in-chrome skill** を参照
+> (実機検証: ohishi-exp/nuxt-dtako-admin#196)。
 
 MCP server: `https://cdp-relay.ippoan.org/mcp` (ippoan 標準 MCP-JWT 認証。`session-start-write-mcp-user-scope.sh`
 hook が `~/.claude.json` に自動 attach するので tool 呼び出し自体に手動設定は要らない)。
