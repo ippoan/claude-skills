@@ -57,15 +57,22 @@ marker `<!-- pr-chat-bridge:request -->` を先頭に入れる (起床時に自�
 
 - draft 型: `subscribe_pr_activity` (未購読なら)。
 - merge 後型: `send_later` で 15〜30 分後の self check-in を仕込む (webhook が来ないため)。
-- user に渡すリンクは **宛先別に作り分ける**:
-  - **chat 起動リンク (推奨)**: `https://claude.ai/new?q=<URL エンコード済みプロンプト>` —
-    新規チャットにプロンプトをプリフィルできる。
-    `q` には「以下の GitHub コメントの検証依頼を読み、Claude in Chrome でブラウザ検証して
-    結果を PR にコメントしてください: <依頼コメント permalink>」を入れる。
-    user は**クリック → 送信するだけ** (貼り付け作業が不要になる)。
-  - **素の permalink**: user が Desktop の既存会話や Cowork で続けたい場合はこちらを貼る。
+- user に渡すのは **依頼コメントの permalink** (これが標準):
+  「この PR コメントのリンクを **Claude Cowork (web でも可) か Claude Desktop** に
+  貼ってください。chat 側の Claude が Claude in Chrome で検証して結果をコメントします」
+  と案内する。
+  - 分かれ目は **web か Desktop かではなく、通常 chat か Cowork/Desktop か**。
+    Claude in Chrome の操作ツールが生えるのは Cowork (web 含む、実証済み) と Desktop。
+    **通常の web chat には生えない**。
+  - **`claude.ai/new?q=` の起動リンクは使わない** — 2026-07-08 の実地試験 (#196 trial) で
+    プリフィルリンクは**通常の web chat に落ちて拡張操作に繋がらない**ことを確認済み。
+    Cowork をプロンプト付きで直接起動する deep link は無いため、user 自身に
+    Cowork/Desktop で貼ってもらう。
+  - なお経路は Cowork/Desktop どちらも「Anthropic cloud → `bridge.claudeusercontent.com`
+    → Native Messaging Host → 拡張」の 1 リレーで、二重リレーにはならない。
   - **CCoW 起動リンク**: merge 後型で回収用セッションを新しく起こしたい時は
-    `open-multirepo` skill で repo + プロンプト事前アタッチの claude.ai/code URL を生成。
+    `open-multirepo` skill で repo + プロンプト事前アタッチの claude.ai/code URL を生成
+    (こちらは claude.ai/code なので web で問題ない)。
 - turn を終了して待つ。sleep / polling しない (draft 型)。
 
 ### 3. 結果が来たら処理する
