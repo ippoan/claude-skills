@@ -25,6 +25,13 @@ description: >
 起きるのは CCoW だけ: chat の結果コメントが webhook で CCoW セッションを再起動する。
 chat 側は貼られたリンクを読んで 1 回動くだけの stateless な worker として扱う。
 
+> **2026-07-09 追記**: cc-webreview の `--chrome` レビュー (cc-webreview-ext#32) が、
+> PR 上の未回答 `<!-- pr-chat-bridge:request -->` を**自動検出して実施**できるように
+> なった (依頼コメント作者が PR 作者 / OWNER / MEMBER / COLLABORATOR の場合のみ、
+> データ変更操作は SKIP 報告)。cc-webreview が動く環境では **user のリンク運搬は不要**
+> で、side panel から対象 PR のレビューを走らせれば result コメントまで自動で付く。
+> chat (Cowork/Desktop) への依頼は cc-webreview 不通時・データ変更を伴う検証の fallback。
+
 ## ★ auto-merge との両立 (この org の要)
 
 この org は CI green → auto-merge が既定。**merge されると CCoW の PR 購読は自動解除**され、

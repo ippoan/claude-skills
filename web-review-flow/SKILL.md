@@ -20,7 +20,7 @@ org の PR レビューは次の **一本道** に統一する。分岐 (ブラ�
 この幹に接ぎ木する形で使う (末尾の使い分け表)。
 
 ```
-CCoW が draft PR 作成 ─▶ side panel (cc-webreview-ext) で Web Review
+CCoW が draft PR 作成 ─▶ side panel (cc-webreview-ext) で Web Review (ブラウザ確認)
         │                        │ <!-- web-review --> コメント投稿
         │ subscribe_pr_activity  ▼
         └──────────▶ webhook で CCoW 起床 → 「CCoW への引き継ぎ」処理 → push
@@ -37,7 +37,7 @@ CCoW が draft PR 作成 ─▶ side panel (cc-webreview-ext) で Web Review
 | 役者 | やること | やらないこと |
 |---|---|---|
 | **author CCoW** | draft で PR 作成・`subscribe_pr_activity`・引き継ぎ処理・修正 push | ready 化・`enable_pr_auto_merge` |
-| **reviewer** (手元 Chrome + cc-webreview-ext の claude -p) | diff / CI / 目視レビュー・`<!-- web-review -->` コメント投稿 | 対象 PR の merge / close / 修正 (read-only allowlist で担保) |
+| **reviewer** (手元 Chrome + cc-webreview-ext の claude -p) | **実ブラウザでの確認専任** (表示・動作・console + `pr-chat-bridge:request` の実施、`--chrome` 時)・`<!-- web-review -->` コメント投稿 | ソース (diff) レビュー・CI 調査 (2026-07-09 user 決定: CCoW の方が速い。allowlist から `gh pr diff` / `gh pr checks` を除外して構造的に不可、cc-webreview-ext#32)。対象 PR の merge / close / 修正 (read-only allowlist で担保) |
 | **user** | レビュー結果の確認・**ready for review 化 (= merge 許可)** | — |
 
 ## 出す側 (author CCoW) の規約
@@ -112,11 +112,11 @@ webhook でコメントイベントを受けたら:
 
 | 経路 | 何をする | いつ使う |
 |---|---|---|
-| **web-review** (この skill) | draft PR のコード + CI + 目視レビュー → PR コメント | merge 前にレビューを挟みたい PR 全般 (幹) |
-| **pr-chat-bridge** skill | chat 側 (Cowork/Desktop + Claude in Chrome) に実ブラウザ検証を依頼 | preview / staging URL の実機 UI 検証が要る時 (幹に接ぎ木) |
-| **review-with-fable / review-with-opus** | push 前のセルフレビュー (CCoW 内で完結、コメントなし) | PR を出す前の品質ゲート。web-review の代替ではなく前段 |
+| **web-review** (この skill) | draft PR の**実ブラウザ確認** (表示・動作・console + bridge 依頼の実施) → PR コメント。ソースレビューはしない | merge 前にブラウザで見ておきたい PR (幹) |
+| **pr-chat-bridge** skill | chat 側 (Cowork/Desktop + Claude in Chrome) に実ブラウザ検証を依頼 | user がリンクを運ぶ手動経路。cc-webreview の `--chrome` レビューが動く環境では web-review が同じ依頼コメントを自動処理する |
+| **review-with-fable / review-with-opus** | push 前のセルフレビュー (CCoW 内で完結、コメントなし) | **ソースレビューの主経路** (push 前の品質ゲート)。web-review はソースを見ないため、コードの正しさ/設計はここで担保する |
 
-推奨順序: セルフレビュー (push 前) → draft PR + web-review → 必要なら pr-chat-bridge →
+推奨順序: セルフレビュー (push 前、ソース担保) → draft PR + web-review (ブラウザ確認) →
 user が ready 化。
 
 ### PR コメント marker 一覧 (org 内の機械可読 marker)
@@ -124,6 +124,7 @@ user が ready 化。
 | marker | 意味 / 処理者 |
 |---|---|
 | `<!-- web-review -->` | Web Review 結果。購読中の CCoW が引き継ぎを処理 (本 skill) |
-| `<!-- pr-chat-bridge:request -->` | chat へのブラウザ検証依頼。chat 側 Claude が読む (pr-chat-bridge skill) |
+| `<!-- pr-chat-bridge:request -->` | ブラウザ検証依頼。処理者は 2 系統: chat 側 Claude (pr-chat-bridge skill、user がリンクを運ぶ) / **cc-webreview reviewer** (`--chrome` レビュー時に自動検出・実施。依頼コメント作者が PR 作者・OWNER/MEMBER/COLLABORATOR の場合のみ、データ変更操作は SKIP。cc-webreview-ext#32) |
+| `<!-- pr-chat-bridge:result -->` | 上記依頼への回答。依頼側セッションが読んでチェックボックスを更新する |
 
 新しい marker を導入する時はこの表に追記する (衝突・二重処理防止)。
