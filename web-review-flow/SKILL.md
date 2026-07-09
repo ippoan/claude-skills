@@ -42,15 +42,18 @@ CCoW が draft PR 作成 ─▶ side panel (cc-webreview-ext) で Web Review
 
 ## 出す側 (author CCoW) の規約
 
-### draft で出すか non-draft で出すか
+### draft で出すか non-draft で出すか — **repo 種別で分ける**
 
-- **既定は draft**。docs / chore を含む全ての PR を draft で出し、
-  Web Review (または user のレビュー) → user が ready 化、を通す。non-draft で出すと
-  CI green の瞬間に auto-merge され、レビューの余地が消える。
-- **non-draft 直行は user が明示的に指示した場合のみ** (= auto-merge 直行の許可は
-  user の意思表示)。「docs だから」等の理由で CCoW が自己判断しない — この例外判断の
-  ぶれが規約化の発端 (cc-webreview-ext#27 / claude-skills#106 で 2 度 user 指摘)。
-- draft → ready は 1 クリック、merge の取り消しはできない。
+判断は「変更の種類 (docs か code か)」ではなく **repo 単位** (2026-07-09 user 決定):
+
+| repo 種別 | 既定 | 理由 |
+|---|---|---|
+| **コード / 実行物 repo** — アプリ・worker・バイナリ・deploy される成果物を持つ repo (cc-webreview-ext, nuxt-\*, rust-\*, auth-worker, ci-workflows 等) | **draft** で出し、Web Review → user が ready 化 | non-draft は CI green の瞬間に auto-merge され、レビューの余地が消える (cc-webreview-ext#27 の実例) |
+| **ドキュメント配布 repo** — `ippoan/claude-skills` / `ippoan/claude-md` (skill 本文・CLAUDE.md テンプレ・knowledge) | **non-draft 直行** (CI green → auto-merge) | テキストのみで実行物に影響せず、修正 PR での巻き戻しが容易。draft を挟む価値が薄い |
+
+- user の明示指示は、どちらの既定よりも常に優先する。
+- ドキュメント配布 repo を増やしたら上の表を更新する (表に無い repo は draft 側に倒す)。
+- draft → ready は 1 クリック、merge の取り消しはできない。迷ったら draft。
 
 ### draft の副作用 (must know、3 点)
 
