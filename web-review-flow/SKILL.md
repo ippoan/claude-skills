@@ -44,19 +44,23 @@ CCoW が draft PR 作成 ─▶ side panel (cc-webreview-ext) で Web Review
 
 ### draft で出すか non-draft で出すか
 
-- **draft で出す**: UI / 挙動の変更、設計判断を含む変更、指摘が出そうな大きめの実装 —
-  つまり「merge 前に人 (または Web Review) の目を通したい」PR。non-draft で出すと
+- **既定は draft**。docs / chore を含む全ての PR を draft で出し、
+  Web Review (または user のレビュー) → user が ready 化、を通す。non-draft で出すと
   CI green の瞬間に auto-merge され、レビューの余地が消える。
-- **non-draft 直行で可**: docs / chore / 機械的な追従変更など、CI green = merge 可の PR。
-- 迷ったら draft。draft → ready は 1 クリック、merge の取り消しはできない。
+- **non-draft 直行は user が明示的に指示した場合のみ** (= auto-merge 直行の許可は
+  user の意思表示)。「docs だから」等の理由で CCoW が自己判断しない — この例外判断の
+  ぶれが規約化の発端 (cc-webreview-ext#27 / claude-skills#106 で 2 度 user 指摘)。
+- draft → ready は 1 クリック、merge の取り消しはできない。
 
 ### draft の副作用 (must know、3 点)
 
 1. **staging に deploy されない** — frontend-ci の deploy-staging / publish-dev は
    `draft == false` gate。preview 導入 repo (create-preview) だけは push で preview が出る
    (詳細は pr-chat-bridge skill の分岐表)。
-2. **dev release が出ない** — cc-webreview-ext 自身の dev-release (MSI) 等、PR CI から
-   prerelease を出す repo も `draft == false` gate。実機確認は ready 化後。
+2. **PR CI から prerelease を出す repo は draft gate の有無を確認** — repo により方針が
+   分かれる。cc-webreview-ext の dev-release (MSI) は **draft でも出す** (draft レビュー中の
+   実機確認にこそ dev build が要るため gate を撤去、cc-webreview-ext#27)。他 repo で
+   `draft == false` gate が残っている場合、実機確認は ready 化後になる。
 3. **auto-merge が効かない** — draft は auto-merge 対象外。さらに **non-draft → draft
    変換は auto-merge の enable を解除し、ready 化しても自動では復活しない** (GitHub 仕様、
    cc-webreview-ext#27 で実測)。org 標準 CI (ci-workflows) は `ready_for_review` trigger で
