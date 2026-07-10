@@ -11,7 +11,9 @@ description: >
   トリガー: 「手元の Chrome を操作」「手元ブラウザ」「cdp-relay」「chrome-devtools-mcp」
   「browser_cdp_endpoint」「wsEndpoint」「CDP passthrough」「browser_pair」「pairing」
   「ペアリング」「pair_code」「拡張を接続」「CCoW からブラウザを見たい」
-  「cdp-relay.ippoan.org」「extension_not_connected」「remote-allow-origins」等。
+  「cdp-relay.ippoan.org」「extension_not_connected」「remote-allow-origins」
+  「cdp_bridge_not_connected」「Chrome 136」「user-data-dir」「ゲストモードで開く」
+  「CDP 取得に失敗」「Failed to fetch 9222」「passthrough 遅い」「レイテンシ」等。
   cdp-browser (Tailscale 直 CDP) / cdp-agent (MSI quick tunnel) とは別経路 — こちらは
   UDP 封鎖 + 手元 NAT 越えが要る CCoW 向けの拡張 → WSS/443 合流方式。
   通常の UI 動作確認 (画面遷移・表示・クリック・コンソールログ) だけなら公式
@@ -103,6 +105,18 @@ popup で CDP passthrough を ON にすると **「Chrome 起動コマンドを�
   — 全 origin 許可 = 任意の Web ページから localhost の CDP を乗っ取られる (デバッグポート
   乗っ取り)。popup が出す値は既にこの拡張 id 限定になっている。
 - これが無い / `*` だと、拡張 SW の WS (Origin: chrome-extension://…) を :9222 が拒否する。
+- **`--user-data-dir` (非デフォルト dir) は Chrome 136+ で必須**。デフォルト profile に対する
+  `--remote-debugging-port` は無視され、ポート自体が開かない
+  (https://developer.chrome.com/blog/remote-debugging-port 、cookie 窃取対策)。
+  症状は popup の `Chrome :9222 の CDP 取得に失敗: Failed to fetch`。
+- **起動した Chrome がゲストモードで開いたら `--user-data-dir` が効いていない**サイン
+  (パス不正時のフォールバック)。典型は **PowerShell に cmd 構文を貼った**ケース —
+  PowerShell では `%LOCALAPPDATA%` が展開されず `^` も行継続でない。1 行のリテラルパス
+  (`--user-data-dir=C:\chrome-cdp-profile` 等) にし、PowerShell では先頭に `&` を付ける。
+  成否は起動した Chrome で `http://localhost:9222/json/version` を開いて JSON が返るかで確認。
+- **操作対象はこの専用 profile 側の Chrome の全タブ** (普段使い profile は Chrome 136 制約で
+  対象にできない — ログイン済み cookie 状態が要る確認は経路 B (chrome.debugger、通常起動の
+  Chrome に効く) を使う。これが curated 経路を deprecate しない理由)。
 
 status が **`connected: CDP passthrough (Chrome :9222)`** になれば手元側は準備完了
 (popup debug ログに `cdp local (Chrome) open` → `cdp remote (cdp-relay) open`)。
@@ -128,9 +142,34 @@ status が **`connected: CDP passthrough (Chrome :9222)`** になれば手元側
   `cdp local (Chrome) open` は出るのに remote だけ失敗、が典型)。
 - **接続順**: 拡張 (CDP passthrough) を先に connected にしてから chrome-devtools-mcp を
   起動する。bridge 未接続だと client 側は `cdp_bridge_not_connected` (503) で即失敗する。
-- **`--remote-debugging-port` 起動忘れ**が最頻の詰まり。popup debug ログに
-  `Chrome :9222 の CDP 取得に失敗` が出たら起動フラグを確認。
+- **client の WS エラーは中身が見えない** — Node native WS / undici は非 101 応答を
+  「Received network error or non-101 status code」としか言わない。切り分けは relay に
+  生 upgrade を投げて応答 body を見る: `503 {"error":"cdp_bridge_not_connected"}` なら
+  経路・token は正常で手元 bridge 未接続なだけ。
+- **`--remote-debugging-port` 起動忘れ / Chrome 136 の user-data-dir 無視** (A-3 参照) が
+  最頻の詰まり。popup debug ログに `Chrome :9222 の CDP 取得に失敗` が出たら起動フラグと
+  `localhost:9222/json/version` を確認。
+- **CCoW からは直結 `wss://` がそのまま通る** (TCP/443 直結可、TLS は Anthropic Egress
+  Gateway が MITM 終端するが `NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt` が標準設定
+  なので Node / puppeteer は信頼する)。proxy シム・ProxyAgent は不要。
 - Cloudflare の WS メッセージ上限は 32 MiB (CDP 用に引き上げ済み)。通常操作は収まる。
+
+### 経路 A の実測値 (2026-07-10 疎通確認、Refs ippoan/cdp-relay#80)
+
+- **疎通 3 点 + マルチタブ全通**: `list_pages` / `navigate_page` / `take_screenshot` /
+  `new_page` / `select_page` / `evaluate_script` / `close_page` (chrome-devtools-mcp@1.5.0
+  29 tools × Chrome 150/Windows)。`select_page` / `close_page` のパラメータは **`pageId`**
+  (`list_pages` の番号を渡す)。
+- **レイテンシ**: CDP 1 コマンド往復 = 中央値 **236ms** (日米間 RTT が支配的、物理下限)。
+  1 ツール呼び出しは内部で 4〜5 コマンド直列 → **warm ~1.1s/call** (screenshot 0.6s)。
+  初回は npx 起動 + WS 確立で ~8s (`claude mcp add` で常駐登録すれば償却)。
+- **高速化は往復回数の削減のみ有効** — chrome-devtools-mcp を手元で動かし MCP を relay する
+  「MCP passthrough モード」(1 call = 1 往復 ≈ 0.3s、約 4 倍) を ippoan/cdp-relay#81 で計画。
+  ただしエージェント作業の体感はモデル推論時間 (5〜30s/turn) が支配するので過大評価しない。
+  ブラウザ操作が主役の作業はエージェント自体を手元で動かす cc-webreview-ext の領分。
+- chrome-devtools-mcp の flag は **`--wsEndpoint` / `--browserUrl`** (kebab-case ではない)。
+  テレメトリは `CI=1` でも無効化できる。「タブ大量時の全タブ強制ロード」は Chrome 149 まで
+  の挙動で 150 では非該当。
 
 ---
 
