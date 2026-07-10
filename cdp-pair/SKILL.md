@@ -2,18 +2,22 @@
 name: cdp-pair
 description: >
   CCoW (Claude Code on the Web) の隔離コンテナから手元 Chrome を cdp-relay 経由で
-  操作するための pairing スキル。2 経路: (A 推奨) chrome-devtools-mcp passthrough —
+  操作するための pairing スキル。3 経路: (A) chrome-devtools-mcp passthrough —
   browser_cdp_endpoint で発行した pair_string を MV3 拡張 popup に貼って手元 Chrome の
   browser-level 生 CDP を cdp-relay 経由で中継し、CCoW の chrome-devtools-mcp を
   --wsEndpoint で合流させて **chrome-devtools-mcp の全ツール** (network/perf/DOM/console)
   を効かせる。(B 軽量) curated — browser_pair の pair_string で /ext に合流し
   browser_navigate / browser_screenshot / browser_eval を直接使う (追加セットアップ不要)。
+  (C 高速) MCP passthrough — browser_mcp_endpoint + 手元 node bridge --mcp で
+  chrome-devtools-mcp を手元 spawn し、MCP JSON-RPC だけを relay (1 ツール = 海越え
+  1 往復 ~0.3s、A の約 4 倍速。cdp-relay#81/#82)。
   トリガー: 「手元の Chrome を操作」「手元ブラウザ」「cdp-relay」「chrome-devtools-mcp」
   「browser_cdp_endpoint」「wsEndpoint」「CDP passthrough」「browser_pair」「pairing」
   「ペアリング」「pair_code」「拡張を接続」「CCoW からブラウザを見たい」
   「cdp-relay.ippoan.org」「extension_not_connected」「remote-allow-origins」
-  「cdp_bridge_not_connected」「Chrome 136」「user-data-dir」「ゲストモードで開く」
-  「CDP 取得に失敗」「Failed to fetch 9222」「passthrough 遅い」「レイテンシ」等。
+  「cdp_bridge_not_connected」「mcp_bridge_not_connected」「Chrome 136」「user-data-dir」
+  「ゲストモードで開く」「CDP 取得に失敗」「Failed to fetch 9222」「passthrough 遅い」
+  「レイテンシ」「browser_mcp_endpoint」「mcppipe」「MCP passthrough」「bridge --mcp」等。
   cdp-browser (Tailscale 直 CDP) / cdp-agent (MSI quick tunnel) とは別経路 — こちらは
   UDP 封鎖 + 手元 NAT 越えが要る CCoW 向けの拡張 → WSS/443 合流方式。
   通常の UI 動作確認 (画面遷移・表示・クリック・コンソールログ) だけなら公式
@@ -45,19 +49,20 @@ hook が `~/.claude.json` に自動 attach するので tool 呼び出し自体�
 - `mcp__cdp-relay__browser_navigate(session, url)` / `browser_screenshot(session)` /
   `browser_eval(session, expression)` / `browser_stash` / `browser_cookies` (経路 B、curated)
 
-## どちらの経路を使うか
+## どの経路を使うか
 
-| | **A. chrome-devtools-mcp passthrough (推奨)** | **B. curated (軽量)** |
-|---|---|---|
-| 発行 tool | `browser_cdp_endpoint` | `browser_pair` |
-| 拡張モード | popup「CDP passthrough」**ON** (pair_string が自動選択) | 通常 (**OFF**) |
-| 手元 Chrome | `--remote-debugging-port` 起動が必要 | 不要 (拡張が任意タブに attach) |
-| CCoW 側の操作 | `chrome-devtools-mcp --wsEndpoint` (全ツール) | cdp-relay の browser_* を直接呼ぶ |
-| 使える範囲 | **chrome-devtools-mcp の全機能** (network/perf trace/DOM/console 等) | navigate / screenshot / eval / cookies |
-| セットアップ | やや重い (debug port + chrome-devtools-mcp 起動) | ゼロ (この session で即使える) |
+| | **A. CDP passthrough** | **B. curated (軽量)** | **C. MCP passthrough (高速)** |
+|---|---|---|---|
+| 発行 tool | `browser_cdp_endpoint` | `browser_pair` | `browser_mcp_endpoint` |
+| 手元に必要 | debug port Chrome + 拡張 (or node bridge) | 拡張のみ (通常起動 Chrome) | debug port Chrome + **node bridge `--mcp` 必須** |
+| CCoW 側 | `chrome-devtools-mcp --wsEndpoint` | cdp-relay の browser_* を直接呼ぶ | stdio シム (`claude mcp add`) or WS 直結 |
+| 使える範囲 | chrome-devtools-mcp 全ツール | navigate / screenshot / eval / cookies | chrome-devtools-mcp 全ツール |
+| 1 ツールの海越え往復 | 4〜5 (warm ~1.1s) | 1 | **1 (~0.3s、A の約 4 倍)** |
+| 操作対象 | 専用 profile の全タブ | **普段使い Chrome のタブ** | 専用 profile の全タブ |
 
-「手元ブラウザを chrome-devtools-mcp でフル操作したい」→ **A**。
-「今すぐ画面を見たい / 軽く操作したい」→ **B**。
+「今すぐ画面を見たい / ログイン済み cookie 状態が要る」→ **B**。
+「chrome-devtools-mcp の全ツール + 操作を連打する」→ **C**。
+「生 CDP そのものが要る / 手元に node を置きたくない (拡張 SW が bridge になる)」→ **A**。
 
 ## なぜ pairing code を使うか (RELAY_TOKEN を会話に出さない)
 
@@ -170,6 +175,55 @@ status が **`connected: CDP passthrough (Chrome :9222)`** になれば手元側
 - chrome-devtools-mcp の flag は **`--wsEndpoint` / `--browserUrl`** (kebab-case ではない)。
   テレメトリは `CI=1` でも無効化できる。「タブ大量時の全タブ強制ロード」は Chrome 149 まで
   の挙動で 150 では非該当。
+
+---
+
+## 経路 C: MCP passthrough (高速版、cdp-relay#81/#82)
+
+chrome-devtools-mcp を **手元で** spawn し、MCP JSON-RPC (1 ツール = 海越え 1 往復) だけを
+relay する。経路 A と同じ全ツールが約 4 倍速く効く。**手元に node 必須** (拡張 SW は
+プロセスを spawn できないため拡張だけでは完結しない — 導線改善は cdp-relay#83)。
+
+### C-1. エンドポイント一式を発行する
+
+```
+mcp__cdp-relay__browser_mcp_endpoint(session?, ttl_seconds?)
+# → { session, pair_code, ws_endpoint (wss://…/mcppipe/{s}?token=…),
+#     bridge_command: 'node bridge/cdp-bridge.mjs --mcp --session … --token …',
+#     claude_mcp_add_command }
+```
+
+session を跨いで tool が未 provision の場合でも、`browser_cdp_endpoint` で mint した
+pair_code は全脚共通なので `/mcppipe/{session}?token=…` を手組みしてよい。
+
+### C-2. 手元で bridge を起動してもらう
+
+Chrome は経路 A と同じ debug port 起動 (Chrome 136+ は非デフォルト `--user-data-dir` 必須)。
+**repo を clone していない手元マシン**では raw ファイル 1 個で bootstrap できる:
+
+```
+mkdir %USERPROFILE%\cdp-bridge 2>nul & cd /d %USERPROFILE%\cdp-bridge
+curl.exe -O https://raw.githubusercontent.com/ippoan/cdp-relay/main/bridge/cdp-bridge.mjs
+node cdp-bridge.mjs --mcp --session <session> --token <pair_code>
+```
+
+初回は npx が chrome-devtools-mcp を DL するので数十秒かかる。
+`mcp remote (cdp-relay) open` が出たら手元側は準備完了。
+
+### C-3. CCoW から繋ぐ
+
+- 常用: `claude_mcp_add_command` (`claude mcp add chrome-local -- node bridge/mcp-stdio-shim.mjs
+  --url "wss://…"`) を実行 → **次 session から** chrome-devtools-mcp の全ツールが生える
+- 単発検証: `/mcppipe` に WS 直結して JSON-RPC (`initialize` → `tools/call`) を 1 行 =
+  1 フレームで喋れば シム無しでも叩ける (CCoW は直結 wss 可、経路 A gotcha 参照)
+
+### 経路 C の gotcha
+
+- client (シム) 切断ごとに bridge は chrome-devtools-mcp child を作り直す (MCP の
+  initialize は接続ごとに 1 回きりのため)。再接続で child 再 spawn の数秒が掛かる。
+- bridge 未接続で client を繋ぐと 503 `{"error":"mcp_bridge_not_connected"}` (fail-fast)。
+- スクリーンショット等の大きな応答は MCP body (base64) で返る — 生値を context に
+  載せたくない場合は経路 B の shot_url 方式の方が向く。
 
 ---
 
