@@ -7,9 +7,12 @@ description: >
   → CI → auto-merge、の一本道と各役割の規約をまとめる。出す側 (draft 判断基準・draft の
   副作用 3 点・勝手に ready 化しない)、受ける側 (marker 検出・チェックリスト処理・frugal
   reply)、他レビュー経路 (pr-chat-bridge / review-with-fable / review-with-opus) との
-  使い分けを収録。トリガー:「レビューの流れ」「レビューフロー」「web review」「Web Review
+  使い分けと、レビューが無駄な動きをする時の実測ベースのトラブルシュート (旧テンプレ
+  同梱 agent / claude-in-chrome 未 provision / debug.sqlite の分解手順、cc-webreview-ext#33)
+  を収録。トリガー:「レビューの流れ」「レビューフロー」「web review」「Web Review
   結果」「draft PR レビュー」「<!-- web-review -->」「CCoW への引き継ぎ」「レビューコメント
-  を処理」「draft で出すべき?」「ready にしていい?」「レビュー統一」「web-review-flow」等。
+  を処理」「draft で出すべき?」「ready にしていい?」「レビュー統一」「web-review-flow」
+  「レビューが無駄」「レビュー 高い/遅い」「debug.sqlite」「debug-dump」等。
   PR 作成時に「レビューを挟むか」を判断する場面、および web-review コメントの webhook で
   起床した時に必ず参照。
 ---
@@ -128,3 +131,25 @@ user が ready 化。
 | `<!-- pr-chat-bridge:result -->` | 上記依頼への回答。依頼側セッションが読んでチェックボックスを更新する |
 
 新しい marker を導入する時はこの表に追記する (衝突・二重処理防止)。
+
+## トラブルシュート: レビューが無駄な動きをする / 高い / 遅い
+
+2026-07-09 の実測 (debug.sqlite 全 run 分解、ippoan/cc-webreview-ext#33) で確定した
+チェック順:
+
+1. **配布 agent のテンプレが旧版でないか** — review.md はバイナリ同梱 (include_str!) の
+   ため、repo を直しても **agent self-update が済むまで旧テンプレ + 旧 allowlist で走る**。
+   旧版 (diff/checks 許可) だと checkout の無い環境で `gh api contents` / graphql / clone を
+   使ったソース考古学に迷い込む (実測: 28 call 中 ~15 が空振り・重複、$1.05/29 turns)。
+2. **`-p` に claude-in-chrome が provision されているか** — stream-json の `system/init` の
+   `mcp_servers` を見る。browser 不在だと model は「できること」= ソース掘りに流れる
+   (新テンプレでは「未実施」と書いて終わる設計)。provision 問題は cc-webreview-ext#31。
+3. context の荷物 (無関係 plugin MCP / skills 30+ 個で prefill ~40K tokens/run) は実在する
+   が第 3 因子 — cache が効き起動→init は 1.2〜1.6s。rate limit 待ち / CLI コールド
+   スタート犯人説は実測で棄却済み。
+
+計測のやり方: `%LOCALAPPDATA%\cc-webreview\debug.sqlite` を取得し、`kind='claude'` の
+payload (`{data: <stream-json>}` ラッパー付き) を `system/init` 単位で run 分割 →
+各 run の init.mcp_servers / assistant usage (prefill) / tool_use 時系列 / result
+(num_turns, duration_api_ms, total_cost_usd) を見る。`cc-webreview-agent --debug-dump N`
+でも直近 N event を取れる。
