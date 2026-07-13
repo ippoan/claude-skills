@@ -56,3 +56,5 @@ comment は harness の self-loop filter を通過し、寝ている session を
 - 「他 agent の作業を知りたい」用途では、相手が **bot identity の comment** を打つ前提
   (raw push や同一 identity の comment は self-filter で届かない)。詳細は
   ippoan/cc-relay#69。
+- 本スキルは **CCoW web セッション限定**。desktop/CLI の Claude Code では webhook push が
+  届かないため、代わりに `pr-watch` スキル (ユーザー端末で回す `gh` delta/ETag ポーリング) を使う。

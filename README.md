@@ -20,7 +20,8 @@
 - **open-multirepo** — 複数リポジトリと任意のプロンプトを事前アタッチした `claude.ai/code` の起動 URL を生成する。使い方: `/open-multirepo <repo1>, <repo2>, ... — <optional prompt>`
 - **check-issue** — GitHub issue を確認してトリアージ用のコンテキストを抽出する。
 - **pr-push** — リポジトリの規約に従って PR を作成・push する。
-- **pr-subscribe** — `subscribe_pr_activity` 経由で、現在の CCoW セッションを PR の活動 (CI 失敗 / コメント / レビュー) に購読させる。PR イベントでセッションが再起動される (cc-relay #69)。PR URL / `owner/repo#N` を渡す。未指定時は user に確認する。使い方: `/pr-subscribe <PR URL>`
+- **pr-subscribe** — `subscribe_pr_activity` 経由で、現在の CCoW セッションを PR の活動 (CI 失敗 / コメント / レビュー) に購読させる。PR イベントでセッションが再起動される (cc-relay #69)。PR URL / `owner/repo#N` を渡す。未指定時は user に確認する。使い方: `/pr-subscribe <PR URL>`。**desktop/CLI セッションでは push が届かないので代わりに pr-watch を使う**。
+- **pr-watch** — desktop/CLI の Claude Code から PR/Issue を「CI 失敗・新規コメント・merge/close」まで監視する。CCoW の webhook push (pr-subscribe) が届かない環境向けに、ユーザー端末で回す `gh` delta/ETag ポーリングスクリプト (`scripts/watch-pr.ps1` / `.sh`) を渡す。LLM トークン消費ゼロ・GitHub API rate はアイドル時実質0・セッションを閉じても生存。sticky (edit-in-place) コメント bot の検知や GraphQL/REST rate 枠の違いなど実装上の罠を回避済み。
 - **next-session** — 次セッションへの引き継ぎを作成する。`.claude/handoff.md` に「次にやること」を保存 + commit し、CCoW ではコンテナが ephemeral なため引き継ぎ用 issue (`handoff` ラベル / `$ARGUMENTS` 指定) にも同内容をコメントして permalink を提示する。`Refs #N` / 秘密値は載せない。resume-session と対。
 - **resume-session** — 前回の引き継ぎを読み込み即座に作業再開する。`$ARGUMENTS` の issue/comment URL → `.claude/handoff.md` → `handoff` ラベル issue の最新コメント、の順で復元 (CCoW で handoff.md が揮発しても可)。新セッション開始時 / compact 後に実行。next-session と対。
 - **wt-direct-push** — worktree から直接 push するワークフロー。
