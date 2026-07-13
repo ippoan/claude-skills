@@ -13,8 +13,12 @@ interval="${3:-120}"
 # separate GraphQL rate pool is exhausted by unrelated `gh` usage in the same session.
 headref=$(gh api "repos/$repo/pulls/$pr" -q .head.ref 2>/dev/null)
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-# shellcheck disable=SC2034  # read/written via nameref indirection (${!2}, printf -v) in cond_get()
-et_issue=""; et_checks=""
+# et_issue/et_checks are read/written via nameref indirection (${!2}, printf -v)
+# inside cond_get(), which shellcheck's static analysis can't trace.
+# shellcheck disable=SC2034
+et_issue=""
+# shellcheck disable=SC2034
+et_checks=""
 prevf=""
 
 # Track id -> updated_at per comment, not just a max-id watermark. A "sticky"
