@@ -13,7 +13,9 @@ interval="${3:-120}"
 # separate GraphQL rate pool is exhausted by unrelated `gh` usage in the same session.
 headref=$(gh api "repos/$repo/pulls/$pr" -q .head.ref 2>/dev/null)
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-et_issue=""; et_checks=""; prevf=""
+# shellcheck disable=SC2034  # read/written via nameref indirection (${!2}, printf -v) in cond_get()
+et_issue=""; et_checks=""
+prevf=""
 
 # Track id -> updated_at per comment, not just a max-id watermark. A "sticky"
 # comment bot (edit-in-place instead of posting new comments, to avoid spam)
