@@ -109,6 +109,7 @@
 - **gmail-mcp** — gmail-mcp コネクタ (送信不可・下書きまでの Gmail remote MCP、ippoan/gmail-mcp) の使い方。Gmail の検索・本文取得・返信下書き・ラベル/アーカイブ操作をツール経由で行い、**送信は構造的に不可** (send 系ツール不在、TRASH/SPAM も拒否)。7 日失効 (テストモード) の再認証誘導 (`/oauth/start?alias=`)、マルチアカウント (`account` 引数)、メール本文の prompt injection への構えを収録。
 - **eml-read** — `.eml` (RFC822 メール) を人間可読化するスキル。MIME ヘッダ (RFC2047 `=?UTF-8?B?...?=`) を decode し本文を charset 解決、添付を保存。PPAP (パスワード付き zip + パスワード別メール) の受領にも対応。`ref-files-bulk` で落とした `.eml` をそのまま Read すると読めないため、その前段で使う (相補的)。
 - **nuxt-vitest** / **worker-vitest** — Nuxt / Workers 向け Vitest ハーネス。
+- **local-first-testing** — org 共通テスト方針 (ippoan/claude-md#102) の実装レシピ。共有 fixture + golden テスト / 本番同種エミュレータ + seed (wrangler dev local = miniflare sqlite 永続化、docker-compose+migrate+seed.sql) / fixture→test→local目視→PR フロー。期待値の手計算と本番乖離 mock DB スキーマを禁止。
 - **durable-object-worker** — Cloudflare Durable Object を no-traffic `versions upload` + Release Wave 運用で作る／切り出す手順。DO migration は versions upload を壊す (error 10211) ため、DO を別 worker に分離し app から **service binding** (external DO binding ではなく) で叩き、専用の `wrangler deploy` workflow で出す。class 削除の catch-22 (10061/10064)・deploy ordering・Node 22・coverage 100% gate・WS 検証を収録。reference: `ippoan/nuxt-items` + `nuxt-items-sync` (#290)。
 - **type-safe-pipeline** — 型安全なデータパイプラインの足場を作る。
 - **verify-env** — 環境変数を検証する。
