@@ -69,6 +69,37 @@ UI に一時的な mock 生成コードを書く場合も、必ず本物の関�
 - ❌ ページ/コンポーネント内にインラインの DEV mock データを恒久放置
 - ❌ golden をテストを通すためだけに無説明で上書き
 
+## 実測 gotcha (nuxt-dtako-admin#268 PR #270/#271 で確定)
+
+Nuxt app + Cloudflare Workers 同居 repo で fixture/golden を組んだときに実際に
+踏んだ罠。同型の repo (nuxt-* + workers/) では最初からこの形にする。
+
+- **app (Nuxt) から worker src を import しない** — vue が worker の定数 1 つを
+  import しただけで、worker のモジュールグラフ全体が Nuxt の厳格 tsconfig
+  (noUncheckedIndexedAccess 相当) で型検査され、worker 側 tsc では通っていた
+  ファイルが CI Type Check で大量エラーになる。UI が worker 側の計算値・設定値を
+  必要とするなら、**worker が API レスポンス (report) に含めて返す**。理論値の
+  計算が worker 1 箇所に集約され、タブ/画面間の値の一貫性も構造的に保証される
+  副次効果もある。型は view 側 mirror interface (型のみの手書き複製) で受ける。
+- **worker の tsconfig に node 型を足さない** — `@types/node` は
+  `@cloudflare/workers-types` とグローバルが衝突する。fixture の読み込みは
+  `resolveJsonModule: true` + JSON static import で行い、golden の**書き込み**
+  (UPDATE_GOLDEN) だけ非リテラル指定子の動的 import
+  (`await import(/* @vite-ignore */ 'node' + ':fs')`) で型解決を回避する
+  (vitest は node 環境なので実行時は素の import になる)。
+- **happy-dom 環境では `import.meta.url` が file: URL にならない** — root
+  (Nuxt) 側テストで `readFileSync(new URL(..., import.meta.url))` は
+  「The URL must be of scheme file」で落ちる。テキスト fixture (CSV 等) は
+  Vite の **`?raw` import** で読む (node env でも happy-dom でも動く)。
+- **root node_modules が無い環境で pure テストだけ回す** — private registry
+  (@ippoan) で root install できないローカルでも、worker の vitest バイナリ +
+  アドホック config (`root: '../..'`, `environment: 'node'`, include を対象
+  ファイルに限定) で app/utils の pure テストを実行できる。config は worker
+  ディレクトリに置く (root に置くと 'vitest' 自体が解決できない)。root
+  tsconfig が `./.nuxt/tsconfig.json` を extends している repo は
+  `.nuxt/tsconfig.json` に `{}` スタブが必要 (gitignore 済み領域)。
+  コミットせず使い捨てる。
+
 ## 関連 skill
 
 - `nuxt-vitest` / `worker-vitest` — テストハーネスの土台
