@@ -69,6 +69,7 @@ node scripts/check_coverage_100.mjs
 | テストデータ ID で 400 | fake ID (`'s1'` 等) | 有効な UUID を使用 |
 | `toBe` でオブジェクト比較失敗 | 参照比較になる | `toStrictEqual` を使用 |
 | `require()` で ESM エラー | Vitest は ESM | `import()` を使用 |
+| `readFileSync(new URL(..., import.meta.url))` が「The URL must be of scheme file」 | happy-dom では `import.meta.url` が file: URL にならない | テキスト fixture は Vite の `?raw` import で読む (`local-first-testing` skill 参照) |
 
 ## CI 連携
 
