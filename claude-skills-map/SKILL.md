@@ -22,7 +22,7 @@ ippoan プロジェクト共通の Claude Code **skill 集** (この repo 自身
 | **per-repo map** (`<repo>-map`) | `auth-worker-map` `ci-dashboard-map` `rust-alc-api-map` `secrets-inventory(-gcp)-map` `release-wave-gcp-map` `ci-workflows-map` `freee-map` `HealthConnectReader(Worker)-map` `nuxt-*-map` `dtako-scraper-map` 他多数 | 1 repo の構造ナビゲーション。frontmatter に `generated-from: <repo>:<tree-sha>` を持ち鮮度追跡される。**新規は `repo-map` skill で作る** |
 | **構造把握メタ** | `repo-map` `cross-repo-symbol-index` `ippoan-infra-map` `large-codebase-setup` | per-repo map の作り方 / 横断 symbol 方針 / CCoW 基盤 5 repo 地図 / 大規模 codebase setup |
 | **PR / CI 運用** | `pr-push` `pr-subscribe` `ci-init` `ci-cache-patterns` `tag-release` `branch-issue-linking` `auto-merge-401` `gh-actions-phantom-permission` `check-issue` | PR 作成・購読 / CI bootstrap / release tag / 命名規約 / CI fail トラブルシュート |
-| **テスト / カバレッジ** | `nuxt-vitest` `worker-vitest` `coverage-check` `coverage-test-patterns` `migrate-test` `type-safe-pipeline` `verify-env` | 各種テストハーネス / coverage gate / 型安全 pipeline / env 検証 |
+| **テスト / カバレッジ** | `nuxt-vitest` `worker-vitest` `coverage-check` `coverage-test-patterns` `migrate-test` `local-first-testing` `type-safe-pipeline` `verify-env` | 各種テストハーネス / coverage gate / 型安全 pipeline / env 検証 |
 | **secret / MCP / package** | `secret-inject` `mcp-user-setup` `package-publish-debug` `npm-supply-chain` | no-leak secret 投入 / user-scope MCP attach / publish デバッグ / supply chain |
 | **ドメイン (freee / egov / gmail)** | `egov-api` `egov-spec` `gmail-mcp` (freee 系は freee repo 同梱) | e-Gov 電子申請 API / 仕様取得 / Gmail 閲覧・下書き (送信不可 MCP、ippoan/gmail-mcp) |
 | **ブラウザ / ファイル / 配信** | `cdp-browser` `ui-preview` `ui-preview-map` `eml-read` `ref-files-bulk` `wrangler-logs` | CDP 操作 / UI preview 配信 / eml 解読 / ref-files 一括 DL / Workers ログ |
@@ -35,7 +35,7 @@ ippoan プロジェクト共通の Claude Code **skill 集** (この repo 自身
 | パス | 中身 |
 |---|---|
 | `<name>/SKILL.md` | 旧来の top-level layout (引き続きサポート)。現状の skill の大半 |
-| `.claude/skills/<name>/SKILL.md` | **新しい skill の推奨パス**。現状 `gh-actions-phantom-permission` `gmail-mcp` `ippoan-infra-map` `large-codebase-setup` `open-multirepo` `ui-preview` |
+| `.claude/skills/<name>/SKILL.md` | **新しい skill の推奨パス**。現状 `gh-actions-phantom-permission` `gmail-mcp` `ippoan-infra-map` `large-codebase-setup` `local-first-testing` `open-multirepo` `ui-preview` |
 | `scripts/extract_symbol.py` | source から特定 symbol を抽出して context 節約 (Rust/Python/TS/Go/PHP)。`cross-repo-symbol-index` 系が使う |
 | `README.md` | 人間向け skill 一覧 + install 方法 (SessionStart hook / 手動) |
 | ルートの単独 `*.md` | skill ではない note: `backend-check.md` `bazel-rust.md` `compare-pdf.md` `smart-read.md` |
@@ -75,7 +75,7 @@ ippoan プロジェクト共通の Claude Code **skill 集** (この repo 自身
 | 置き場 | スキル |
 |---|---|
 | **repo 直下** (大多数) | `auth-worker-map/`, 各 `<repo>-map/`, `repo-map/`, `cross-repo-symbol-index/`, `pr-push/`, `coverage-*`, `egov-*`, `open-multirepo-smoke/` … |
-| **`.claude/skills/` 配下** (少数) | `ippoan-infra-map`, `gh-actions-phantom-permission`, `gmail-mcp`, `large-codebase-setup`, `open-multirepo`, `ui-preview`, `plan-with-fable`, `review-with-fable`, `plan-with-opus`, `review-with-opus` |
+| **`.claude/skills/` 配下** (少数) | `ippoan-infra-map`, `gh-actions-phantom-permission`, `gmail-mcp`, `large-codebase-setup`, `local-first-testing`, `open-multirepo`, `ui-preview`, `plan-with-fable`, `review-with-fable`, `plan-with-opus`, `review-with-opus` |
 
 この 2 系統への分裂は移行時の歴史的経緯で、**統一方針は未確定**。歴史的に直下が
 多数派なので当面は直下に倣うのが無難 (Claude Code 標準パスは `.claude/skills/` の方)。
