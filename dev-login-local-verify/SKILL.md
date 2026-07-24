@@ -1,6 +1,6 @@
 ---
 name: dev-login-local-verify
-description: ohishi-exp/nuxt-dtako-admin をローカルの wrangler dev で prod backend に対して起動し、dev-login (ippoan/auth-worker#423) を実機検証する手順。「wrangler dev」「dev-login」「dev token」「__dev/callback」「ローカルでprod確認」「localhost:8787」「issue_dev_login_url」等のキーワードや、このリポジトリをローカルで起動して本番相当のデータで動作確認したいという要求が出たら必ずこのskillを参照する。env.dev のような named environment を新設・改変する前に必ず読むこと — 過去に一度、遠回りな設計 (env.dev の書き換え、env.dev-prod の新設検討) を経てから、実は不要だと判明した経緯があるため。
+description: ohishi-exp/nuxt-dtako-admin をローカルの wrangler dev で prod backend に対して起動し、dev-login (ippoan/auth-worker#423) を実機検証する手順。setup-dev-env.sh で worktree 作成〜起動を1コマンド化済み、--hybrid で nuxt dev (HMR) 並走 = 編集→反映 0.1秒。「wrangler dev」「dev-login」「dev token」「__dev/callback」「ローカルでprod確認」「localhost:8787」「issue_dev_login_url」「HMR」「hybrid dev」等のキーワードや、このリポジトリをローカルで起動して本番相当のデータで動作確認したいという要求が出たら必ずこのskillを参照する。env.dev のような named environment を新設・改変する前に必ず読むこと — 過去に一度、遠回りな設計 (env.dev の書き換え、env.dev-prod の新設検討) を経てから、実は不要だと判明した経緯があるため。
 ---
 
 # dev-login ローカル実機検証
@@ -25,6 +25,23 @@ drift の元になる。加えて `DEV_LOGIN=true` を持つ **deploy 可能な 
 定義** が repo に恒久的に残ってしまう (誰かが誤って `wrangler deploy -e dev` 的な
 ことをすれば本番にこのガードが露出しかねない) — `--var` 方式ならそもそも
 そういう定義が repo に存在しないので、この懸念自体が構造的に消える。
+
+## クイックスタート: setup-dev-env.sh
+
+手順 0〜5 (worktree 作成 → node_modules junction → prebuilt config 生成 →
+port 先住チェック → nuxt build → wrangler dev 起動・Ready 待ち) は
+同ディレクトリの `setup-dev-env.sh` に自動化済み。repo ルートから:
+
+```bash
+bash .claude/skills/dev-login-local-verify/setup-dev-env.sh            # wrangler dev のみ
+bash .claude/skills/dev-login-local-verify/setup-dev-env.sh --hybrid   # + nuxt dev (HMR)
+```
+
+- node_modules は「実体を持つ worktree」から junction (0秒)。donor が無ければ
+  `gh auth token` で GH Packages 認証して npm install に落ちる (gh token に
+  `read:packages` scope が必要 — 無ければ `gh auth refresh -s read:packages` を
+  一度実行しておく。2026-07-25 に NODE_AUTH_TOKEN 失効の恒久対策として確立)。
+- UI をいじる検証は `--hybrid` を推奨 (下の「hybrid dev」節参照)。
 
 ## 手順
 
@@ -110,14 +127,51 @@ tool。claude.ai のカスタムコネクタとしてこの URL を追加し、G
     node_modules の auth-client が古い場合は #442 の 4 ファイル
     (`devLogin.mjs` / `devLoginCore.mjs` / `index.mjs` / `index.d.mts`) を
     手で当ててから nuxt build する。
-  - 既知の見た目上の残課題: `/` → `/operations` の `navigateTo` と Vue Router の
-    hash 復元の相互作用で、URL バーに `#token=...` が残る (セッション確立と
-    localStorage 保存は正常)。localhost 専用 + 30分 TTL のため受容。
+  - ~~URL バーに `#token=...` が残る~~ → **auth-client 0.2.150 (auth-worker#447)
+    で解消済み**。真因は「Nuxt の router が起動時に捕捉した hash 込み initialURL を
+    復元するナビゲーションが、`consumeFragment` の replaceState を後から上書きする」
+    だった。`router.isReady()` は復元ナビより先に解決するためフックにできず
+    (auth-worker#446 は効かなかった)、`consumeFragment` 内の最初の
+    `router.afterEach` で再除去する方式が正解 (実測タイムラインは
+    auth-worker#445 のコメント参照)。0.2.149 以前の node_modules では従来どおり
+    hash が残るが cosmetic (セッション確立は正常)。
 - `issue_dev_token({})` → curl 等での直接検証用の Bearer JWT (30分 TTL)。
 
 いずれも呼び出し元 (このMCPセッション) の Google アカウントが
 `DEV_LOGIN_ALLOWED_SUBJECTS` (auth-worker側 KV) に事前登録されている必要がある
 (issue #423 参照)。
+
+## hybrid dev: nuxt dev (HMR) + wrangler dev 並走 (2026-07-25 実測で確立)
+
+UI をいじるイテレーションは wrangler dev 単体だと「編集 → `nuxt build` (~90秒) →
+自動 reload (~20-30秒)」かかる。**`nuxt dev` を並走させると編集→反映が実測 106ms**
+になる (`setup-dev-env.sh --hybrid` が全部やる)。
+
+仕組み: `nuxt dev` 単体が使えなかった理由は `/api/proxy` (server route) が
+`AUTH_WORKER` service binding 依存で 503 になるため。nuxt.config.ts の
+`nitro.devProxy` に binding 依存経路だけ並走中の wrangler dev へ転送する entry を
+足すことで解決する:
+
+```ts
+    devProxy: {
+      // (既存の /restraint-api, /net780-api は relay worker 用 — 下の注意参照)
+      '/api/proxy': { target: 'http://127.0.0.1:8787/api/proxy' },
+      '/__dev': { target: 'http://127.0.0.1:8787/__dev' },
+    },
+```
+
+- `NUXT_PUBLIC_API_BASE` / `NUXT_PUBLIC_AUTH_WORKER_URL` / `NUXT_ALC_API_URL` は
+  wrangler.toml の `[vars]` と同値を env で渡して `npx nuxt dev --port 3000`。
+- **dev-login は `issue_dev_login_url({ port: 3000 })`** (nuxt dev 側の port)。
+  `/__dev/callback` が devProxy 経由で wrangler に届き、cookie は host スコープ
+  (port 無関係) なので :3000 でもそのまま有効。fragment handoff → consumeFragment →
+  セッション確立まで全経路動作を実機確認済み。
+- 初回ページ表示はオンデマンドコンパイル + API 往復でデータ表示に時差が出る (正常)。
+  2回目以降・HMR は即時。
+- 注意: 既存 devProxy の `/restraint-api`・`/net780-api` は **relay worker
+  (dtako-scraper-relay) 用に同じ :8787 を指している**。relay も必要な検証では
+  front worker とどちらかの port をずらすこと (hybrid スクリプトは front を 8787
+  に置く前提なので、relay 併用時は relay 側を移す)。
 
 ## 実行環境の注意
 
