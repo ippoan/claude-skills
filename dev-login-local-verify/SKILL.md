@@ -42,6 +42,10 @@ bash .claude/skills/dev-login-local-verify/setup-dev-env.sh --hybrid   # + nuxt 
   `read:packages` scope が必要 — 無ければ `gh auth refresh -s read:packages` を
   一度実行しておく。2026-07-25 に NODE_AUTH_TOKEN 失効の恒久対策として確立)。
 - UI をいじる検証は `--hybrid` を推奨 (下の「hybrid dev」節参照)。
+- **nuxt build (~90秒) は `.output` が無い初回だけ自動実行**される。hybrid では
+  UI は nuxt dev 側が配信するので、wrangler 用の .output は古くても構わない
+  (binding 依存 route を動かすためだけに存在する)。server/ 配下や依存
+  (auth-client bump 等) を変えた時だけ `--build` を付けて作り直す。
 
 ## 手順
 

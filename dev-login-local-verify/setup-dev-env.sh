@@ -10,7 +10,13 @@
 #   --wrangler-port N wrangler dev の port (default: 8787)。hybrid 時は devProxy が 8787 固定
 #                     なので変えないこと
 #   --nuxt-port N     nuxt dev の port (default: 3000)
-#   --no-build        nuxt build をスキップ (.output が最新と分かっている時)
+#   --no-build        nuxt build を強制スキップ
+#   --build           nuxt build を強制実行
+#
+# build の既定は「.output/server/index.mjs が無い時だけ実行」。hybrid では UI は
+# nuxt dev (:3000) が配信するため、wrangler 側の .output は binding 依存 route
+# (/api/proxy, /__dev) を動かすためだけに必要 — UI が古くても問題ない。
+# server/ 配下や依存 (auth-client 等) を変えた時だけ --build を付けること。
 #
 # やること: git fetch → worktree add/更新 (origin/main detached) → node_modules を
 # donor から junction (0秒) or npm install (gh auth token) → wrangler.prebuilt.toml 生成
@@ -22,12 +28,13 @@ NAME="wrangler-dev-test"
 HYBRID=0
 WPORT=8787
 NPORT=3000
-BUILD=1
+BUILD=auto
 while [ $# -gt 0 ]; do
   case "$1" in
     --hybrid) HYBRID=1 ;;
     --wrangler-port) WPORT=$2; shift ;;
     --nuxt-port) NPORT=$2; shift ;;
+    --build) BUILD=1 ;;
     --no-build) BUILD=0 ;;
     -h|--help) grep '^#' "$0" | head -20; exit 0 ;;
     *) NAME=$1 ;;
@@ -87,11 +94,20 @@ if netstat -ano 2>/dev/null | grep "LISTENING" | grep -q ":$WPORT[^0-9]"; then
   exit 1
 fi
 
+if [ "$BUILD" = auto ]; then
+  if [ -f "$WT/.output/server/index.mjs" ]; then
+    BUILD=0
+    echo "== [5/6] nuxt build スキップ (.output あり。server/ や依存を変えた時は --build)"
+  else
+    BUILD=1
+  fi
+fi
 if [ "$BUILD" = 1 ]; then
   echo "== [5/6] nuxt build (~90s)"
   (cd "$WT" && npx nuxt build)
-else
-  echo "== [5/6] nuxt build スキップ (--no-build)"
+elif [ ! -f "$WT/.output/server/index.mjs" ]; then
+  echo "!! --no-build 指定だが .output が無い。一度 build が必要"
+  exit 1
 fi
 
 echo "== [6/6] wrangler dev 起動"
