@@ -88,7 +88,7 @@ echo "== [3/6] wrangler.prebuilt.toml ([build] 除去で起動 168s->23s)"
 sed '/^\[build\]$/,/^$/d' "$WT/wrangler.toml" > "$WT/wrangler.prebuilt.toml"
 
 echo "== [4/6] port $WPORT 先住チェック"
-if netstat -ano 2>/dev/null | grep "LISTENING" | grep -q ":$WPORT[^0-9]"; then
+if netstat -ano 2>/dev/null | grep "LISTENING" | grep -q ":${WPORT}[^0-9]"; then
   echo "   !! port ${WPORT} に先住プロセスあり。旧 workerd が旧バンドルで応答する罠 (SKILL.md 手順0)。"
   echo '   !! PowerShell: Get-NetTCPConnection -LocalPort <port> -State Listen | % { Stop-Process -Id $_.OwningProcess -Force }'
   exit 1
