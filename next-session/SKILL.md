@@ -1,37 +1,122 @@
 ---
 name: next-session
 description: >
-  次セッションへの引き継ぎを作成する。CCoW (Claude Code on the Web) ではコンテナが
-  ephemeral で次セッションは main の fresh clone から始まるため、引き継ぎ用 GitHub issue
-  への投稿を唯一の正本とし、permalink をユーザーに提示する (handoff.md は作らない)。
-  ローカル CLI では `.claude/handoff.md` に保存して commit する (issue は任意)。
-  plan ファイルがあれば進捗も更新する。resume-session と対。
+  今のセッションを畳んで続きを次のセッションへ引き継ぐ。**local Claude Code では
+  引き継ぎメモではなく task チップとして次を起動し、起動確認まで見届けてから自分を
+  archive する**のが既定。CCoW (Claude Code on the Web) ではコンテナが ephemeral で
+  次セッションは main の fresh clone から始まるため、引き継ぎ用 GitHub issue への
+  投稿を唯一の正本とし、permalink をユーザーに提示する (handoff.md は作らない)。
+  task も issue も使えない環境では handoff.md / memory に残す。plan ファイルが
+  あれば進捗も更新する。監督役 (親) の交代手順もここ。resume-session と対。
   トリガー:「引き継ぎ作成」「next-session」「セッション終わり」「申し送り」
-  「handoff 保存」「次のセッションへ」等。
+  「handoff 保存」「次のセッションへ」「続きは次」「セッションを畳む」
+  「ここまでにする」「親を引き継ぐ」等。
 ---
 
-# 次セッションへの引き継ぎを作成
+# 次セッションへの引き継ぎ
 
-引き継ぎの置き場は**実行環境で変える**:
+**引き継ぎは「メモを置いて消える」のではなく、次の担い手を起動してから消える。**
+メモだけ残すと、次に誰かが読む保証が無く、読んでも文脈の再構築から始まる。
 
-| 環境 | 正本 | handoff.md |
+## 0. 環境を見る — 引き継ぎの形は環境で決まる
+
+| 環境 | 判定 | 引き継ぎの形 |
 |---|---|---|
-| **CCoW (リモート)** | 引き継ぎ用 **GitHub issue** | **作らない** |
-| **ローカル CLI** | `.claude/handoff.md` (commit) | 作る (issue は任意) |
+| **local Claude Code** | `mcp__ccd_session__spawn_task` が使える | **task チップで次を起動** (既定) → §1 |
+| **CCoW (リモート)** | spawn_task 無し。コンテナ ephemeral | **引き継ぎ用 GitHub issue が唯一の正本**。handoff.md は作らない → §2 |
+| **その他** (claude.ai / 非対話) | 同上 | handoff.md / memory → §3 |
 
 **CCoW で handoff.md を作らない理由**: コンテナは ephemeral で、次セッションは
 **main の fresh clone** から始まる。handoff.md を feature ブランチに commit しても
 main に無ければ次セッションのワークツリーには現れず、リンクでも渡せない。よって
 CCoW では **GitHub issue が唯一機能する引き継ぎ手段**。handoff.md は徒労なので作らない。
 
-## やること
+**共通の第 0 手**: `plan/implementation-plan.md` 等の plan ファイルがあれば進捗を更新
+(完了タスクに `[x]`、Phase 見出しに ✅ (完了) / 🔧 (進行中))。無ければ skip。次に
+`git status` で未コミットの変更・push 済みブランチを把握する。
 
-1. **plan ファイルがあれば進捗を更新**: `plan/implementation-plan.md` 等が存在すれば、完了した
-   タスクに `[x]`、Phase 見出しに ✅ (完了) / 🔧 (進行中) を追記する。無ければ skip
-2. **git 状態を確認**: `git status` で未コミットの変更・push 済みブランチを把握する
-3. **環境で分岐して引き継ぎを残す**:
+---
 
-### CCoW (リモート) の場合 — issue のみ
+## 1. task 引き継ぎ (local Claude Code) — 既定
+
+### 1-1. 残件を洗い出してチップ化する
+
+- 残件が複数あるなら**分割して複数チップ**にする (依存順に番号)。分割の作法・
+  prompt の書き方・worktree と共有資源の扱いは [[task-split]] に従う
+- prompt は**完全に自己完結**させる。次のセッションはこの会話を一切見られない —
+  「さっきの件」「上記の方針」は通じない。決定事項・座標 (file:line)・受け入れ
+  条件・罠を全部書く
+- **`cwd` を必ず渡す** (repo 作業なら対象 repo)。hook が未指定を拒否する
+- 引き継ぎ先が**親を持たない**場合 (このセッションが畳むので報告先が消える) は、
+  prompt に「報告はユーザーへ直接。親セッションは畳まれている」と明記する。
+  逆に自分が畳まず監督を続けるなら [[report-to-parent]] の宛先として自分を書く
+- **監督役 (親) を引き継ぐ場合は、prompt に「起動通知」の義務を書く** (下記)
+
+### 監督役の交代 — 起動通知 → 自己アーカイブ
+
+親を引き継ぐときは、**旧親が先に消えてはいけない**。順序は必ずこれ:
+
+1. 旧親が後継チップを起票する (prompt に下の 2 点を義務として書く)
+2. **後継が起動したら、最初に旧親へ `send_message` で「[引き継ぎ完了] 起動通知」を送る。**
+   中身は「監督を引き受けた」「旧親は畳んでよい」「再開した場合は子からの報告を
+   後継へ転送し、自分では返信しない」の 3 点
+3. **後継は走行中の子全員へ「親交代」を通知する** (宛先の付け替え)
+4. **旧親は起動通知を受けてから自己 archive する**
+
+後継が旧親に通知しないと、旧親は「起票しただけで起動を確認できていない」状態で
+止まり続ける (§1-2 の裏返し)。
+
+**★ 「self-archive します」と書くのと、実際に畳むのは別。**
+`mcp__ccd_session_mgmt__archive_session { session_id: "self" }` を**呼ぶ**こと
+(`"self"` は自セッションでも拒否されない唯一の口で、必ずユーザーの確認ダイアログが
+出る)。**子が「archive します」と報告してきても畳んだと思わず、`list_sessions
+{ include_archived: true }` の `isArchived` で確認する。**
+
+### 宛先は必ずタイトル逆引き — sessionId を prompt に埋めない
+
+**自分の sessionId は自分では知れない。** `list_sessions` は自セッションを除外し、
+`get_session` / `set_session_title` は自分を拒否する。`~/.claude/sessions/*.json` の
+`sessionId` は**別物** (transcript の ID) で、`local_` を付けても
+`send_message` の宛先にはならない — 子から `not found` が返る。
+
+したがって prompt には ID ではなく**判別条件**を書く:
+
+> 報告は `list_sessions` でタイトル逆引き。宛先は
+> 「#\<issue\> の監督セッション」(自分と兄弟タスクのタイトルは除く)。
+
+**自分のタイトルも自分では取得できない**ので、最初に届いた子の報告で
+「逆引きに使ったタイトル文字列をそのまま返して」と聞いて確定させ、以後の prompt に
+そのまま書く。**`isRunning: false` / `lastActivityAt` は当てにならない** —
+走行中の子が「停止中」に見えるので、それを理由に送るのを諦めない。
+
+### 1-2. 起動を確認する — **ここを飛ばして畳まない**
+
+チップは**ユーザーがクリックして初めて起動する**。起票しただけで archive すると
+仕事が消える。確認は次のどれかが取れるまで待つ:
+
+- 「タスクを開始した」旨の system-reminder が届く
+- `list_sessions` に該当タイトルの `isRunning: true` が出る
+- 子から `[開始]` が届く
+
+ユーザーがすぐ起動しないこともある。その場合は**畳まずに待つ**か、「起票だけして
+おくので好きなときに起動してください」と伝えて畳む (どちらかをユーザーに確認)。
+
+### 1-3. 起動後に文脈を補う (任意)
+
+起動を確認したら `send_message` で、prompt に書ききれなかった補足 (直前に判明した
+事実、参照すべき成果物のパス) を送る。
+
+### 1-4. 自分を畳む
+
+`archive_session` を `session_id: "self"` で呼ぶ。**PR に紐づくセッションなら
+呼ばなくてよい** — 「Auto-archive on PR close」が畳む。
+
+畳む前に最後の応答で、ユーザーに向けて残すこと: 起票したチップの一覧 (title と
+何をするか)、この時点で分かっている状態、次に人が判断する必要がある点。
+
+---
+
+## 2. CCoW (リモート) — issue のみ
 
 引き継ぎ用 issue に投稿する。handoff.md は**作らない**。
 
@@ -44,15 +129,28 @@ CCoW では **GitHub issue が唯一機能する引き継ぎ手段**。handoff.m
   引き継ぎか」を 1 行入れる
 - push 済みブランチ名、関連 PR / commit のリンクを本文に含める
 - **`Refs #N` を使う** (`Closes` / `Fixes` / `Resolves #N` は禁止 — auto-close 防止)
+- 投稿した **issue コメントの permalink** をユーザーに提示し、次セッションでは
+  `/resume-session <permalink>` にそのまま渡せる旨を添える
 
-### ローカル CLI の場合 — handoff.md
+---
 
-`.claude/handoff.md` に下記 3 セクションを書き、ローカル経路で
-`git add .claude/handoff.md` → commit → `git push -u origin <branch>`
-(`create_or_update_file` / `push_files` は使わない)。issue 投稿は任意
-(ローカルは `claude --teleport` / web follow-up で会話ごと継続できるため)。
+## 3. メモ引き継ぎ (task も issue も使えない環境)
 
-### 引き継ぎ本文 (3 セクション、両環境共通)
+置き場所は「次に読む人が必ず通る場所」を選ぶ:
+
+- repo がある → `.claude/handoff.md` に書き、ローカル経路で
+  `git add .claude/handoff.md` → commit → `git push -u origin <branch>`
+  (`create_or_update_file` / `push_files` は使わない)。path をユーザーに提示する
+- 進行中の調査 → **memory** の該当ファイル (project 型) を更新
+- issue / PR がある作業 → そこへコメント (数値と実測は本文に、URL は memory に)
+- どれも無い → ユーザーに「どこに残すか」を聞く
+
+内容は task の prompt と同じ基準 — 自己完結、座標、決定と理由、罠、次の一手。
+「続きをやる人が最初に打つコマンド」を 1 つ書いておくと立ち上がりが速い。
+
+---
+
+## 引き継ぎ本文 (3 セクション、全環境共通)
 
 ```markdown
 ## 未コミットの変更
@@ -61,21 +159,24 @@ CCoW では **GitHub issue が唯一機能する引き継ぎ手段**。handoff.m
 ## 次にやること
 - 最優先タスク
 - その次のタスク
-- ...
 
 ## 注意点
 - 次のセッションで知っておくべき制約や決定事項のみ (最小限)
 ```
 
-4. **ユーザーに報告**:
-   - CCoW: 投稿した **issue コメントの permalink** を提示。次セッションでは
-     `/resume-session <permalink>` にそのまま渡せる旨を添える
-   - ローカル: handoff.md の path を提示
-
 ## ルール
 
 - **秘密の値 (token / API key / password) を本文に書かない** — 名前だけ書き、値は
   `secret-inject` 経由。会話・log・issue に値が出た時点で compromised
+- **内部アドレス (社内 DNS / tailscale 等) を commit / PR 本文 / docs に書かない。**
+  測定に使うのは可
 - **要約は不要** — 過去にやったことは plan ファイル / git に記録済み
 - **次にやることにフォーカス** — 次のセッションの Claude がすぐ着手できるように。簡潔に
 - `$ARGUMENTS` が issue 指定でなく自由文なら、それを「次にやること」の先頭に含める
+
+## やらないこと
+
+- **起動を確認せずに archive しない** (仕事が消える)
+- **「あとはよろしく」だけの引き継ぎにしない** — 次が調査からやり直しになる
+- 引き継ぎ先が読めない場所 (このセッションの scratchpad、揮発する tmp) に成果物を
+  置いたまま畳まない。残すなら永続パスへ退避してから渡す
