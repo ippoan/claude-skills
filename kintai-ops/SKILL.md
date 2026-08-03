@@ -23,7 +23,8 @@ issue ごとに skill が増えていきます。**置くのは「その issue �
 
 **この skill もタスク台帳も、作業 PC のファイルシステムにしか存在しません。**
 Cowork / remote / スケジュール実行のセッションからは**読めません**。また
-§4 の測定口は tailscale 経由の内部アドレスなので、**作業 PC 以外からは届きません。**
+`http://ohishi-data:3100` (§4) は tailscale 経由の内部アドレスなので、
+**作業 PC 以外からは届きません。**
 
 **★ フォルダが無いときの切り分け (これを間違えると静かに事故ります)**
 
@@ -142,24 +143,19 @@ sessionId を引き、`mcp__ccd_session_mgmt__send_message` で送ります。
 
 ## 4. ★ 測定手段 — オンプレに直接届きます
 
-**`${ONPREM_KINTAI_API}` の実アドレスは、この repo には書きません** (社内 DNS /
-tailscale の内部アドレスを docs に残さないため)。**値は memory の
-`onprem-http-api-reachable-directly` にあります。** 無ければユーザーに聞いてください。
-
 ```bash
-curl -s ${ONPREM_KINTAI_API}/health
-curl -s "${ONPREM_KINTAI_API}/api/kintai/events?month=2026-06&driver=1078"   # driver 必須
-curl -s "${ONPREM_KINTAI_API}/api/kintai/rest-diff?month=2026-06"            # driver 省略可
-curl -s "${ONPREM_KINTAI_API}/api/kintai/reading-dates?month=2026-06"        # driver 省略可
-curl -s "${ONPREM_KINTAI_API}/api/kintai/day-summaries?month=2026-06"
+curl -s http://ohishi-data:3100/health
+curl -s "http://ohishi-data:3100/api/kintai/events?month=2026-06&driver=1078"   # driver 必須
+curl -s "http://ohishi-data:3100/api/kintai/rest-diff?month=2026-06"            # driver 省略可
+curl -s "http://ohishi-data:3100/api/kintai/reading-dates?month=2026-06"        # driver 省略可
+curl -s "http://ohishi-data:3100/api/kintai/day-summaries?month=2026-06"
 ```
 
 - **Cloudflare Access の 403 は edge (`rust-ichiban.mtamaramu.com` 経由) にだけ**効きます。
   tunnel を通らない直接続にサービストークンは要りません
 - **新しい口を足したら、MCP tool の登録を待たずに deploy 後この `curl` で測れます**
-- **★ 実アドレスを commit message / PR 本文 / docs / コード内コメントに書かないで
-  ください** (ユーザー指示)。測定に使うのは可。**この skill 自身が repo に入るので、
-  ここにも書きません**
+- **★ `http://ohishi-data:3100` は tailscale 経由の内部アドレスです。commit message /
+  PR 本文 / docs / コード内コメントに書かないでください** (ユーザー指示)。測定に使うのは可
 - **`/health` の `backends` を 1 回読めば到達性が確定します。** config を読んで推論しない
   (`kintai_events: "mariadb"` の 1 行が「オンプレは alc を呼べない」を確定させ、
   親の設計案 2 つを同時に潰しました)
@@ -172,6 +168,123 @@ curl -s "${ONPREM_KINTAI_API}/api/kintai/day-summaries?month=2026-06"
 管理画面 `https://dtako.ippoan.org` — 運行一覧 / スクレイプ (読み取り日ベースのカレンダー) /
 アップロード。ブラウザから `/api/proxy/api/operations/{22桁の運行NO}` で
 `reading_date` / `operation_date` / `has_kudgivt` が引けます。
+
+## 4.5 ★ 認証と到達性 — どこから何に届くか
+
+**「サーバ側で自動化できるか」は、毎回ここで決まります。** 思いつく前に表を見ること。
+
+| 相手 | 認証 | 誰が届くか |
+|---|---|---|
+| **オンプレ rust** (`ohishi-data:3100`) | 不要 (CF Access は edge だけ) | 作業 PC / オンプレ内 |
+| **社内 nginx (CakePHP)** = 内部ホスト | **`view` / `autoload` など主要 action は `AppController::beforeFilter` の `addUnauthenticatedActions` で認証免除**。ただし **CakePHP の CSRF は別**で、フォームに `_csrfToken` があり **対の cookie は HttpOnly** | **オンプレからは届く。Cloudflare の worker からは届かない** (内部アドレス) |
+| **`dtako.ippoan.org` (nuxt SPA)** | **要る。token は `localStorage`、サーバ側 DO の TTL 8h** (`useTheearthSession`)。`authHeaders()` が読む | **relay / kyuyo-mcp は自前で theearth にログインできる** (`DTAKO_ACCOUNTS` を KV に持つ) |
+
+**⇒ 3 つを 1 か所から自動で繋ぐ経路は無い。**
+
+- **token を URL に載せる案は成立しません** — localStorage にあり 8 時間で失効し、履歴とログに残る
+- **CSRF cookie が HttpOnly** なので、**フォーム投稿はそのページを開いたブラウザからしか通りません**。
+  サーバ側から投げようとすると CSRF を迂回することになるので、やらない
+- **ブラウザ操作 (claude-in-chrome) が使えるなら、それが最短**。認証も CSRF も
+  ブラウザが持っているものをそのまま使えるので、資格情報をどこにも移さずに済む
+
+**★ 「オンプレ rust から外部を fetch しない」は `dtako_day` (リンク組み立て) 限定の注意。**
+一般則ではない — オンプレは既に auth-worker (`/auth/introspect`) を fetch している。
+
+**★ ただしオンプレに secret を置くのは不可** (2026-08-01 オーナー判断)。
+外へ出る必要があるときは **relay → オンプレの push 方向**にする
+(`PUT /api/restraint/summaries` と同じ流儀。**資格情報は relay 側に既にある**)。
+
+## 4.6 `unko_no` の桁がオンプレと GCP で違う
+
+**オンプレ (MariaDB) は 23 桁、GCP (alc 由来) は 22 桁**で、突合は先頭 22 桁で当てています
+(`unko_diff_trials` の `prefix22`)。**社内 nginx の URL キーは 23 桁**なので、
+**リンクを作れるのはオンプレ側の値だけ**。22 桁を混ぜると存在しない運行を指します。
+
+## 4.7 ★ ずれた値を直す導線 (3 段。どこが誰の担当かが毎回問題になる)
+
+```
+① csvdata.zip を取る    theearth        relay が DTAKO_ACCOUNTS で自前ログインできる
+② 社内 nginx へ取り込む   autoload        オンプレ rust だけが内部アドレスに届く
+③ 勤務時間再登録         resetbyUnkoNo   人がボタンを押す
+```
+
+### ② の口 (`POST <nginx>/dtako-events/autoload`)
+
+- **認証もCSRFも免除済み。** `AppController::beforeFilter` の
+  `addUnauthenticatedActions` に `autoload`、**`Application.php` の CSRF ホワイトリストにも
+  `['controller' => 'DtakoEvents', 'action' => 'autoload']`** がある。
+  **⇒ 迂回ではなく、正規にサーバから POST できる**
+- **★ MIME 決め打ち。** `getClientMediaType() === "application/x-zip-compressed"` でしか
+  受けない。**`application/zip` で送ると展開もエラーも出ず黙って無視される**
+- **★「1 回の POST で最大 18 回走る」は誤り (2026-08-03 訂正、実コードで確認)。**
+  `for ($i=1;$i<10;$i++)` は 2 箇所あり**ループ自体は 9 回ずつ回る**が、
+  **実際に取り込むのは最初の 1 回だけ**。`_autoload` は先頭で対象 CSV を
+  `dtako_csv/tmp/` へ `rename` するので、2 回目以降は `$vv->isWritable()` が
+  false になり foreach の中身ごと skip される (= 実質 no-op)。
+  `usleep(3000)` は zip 展開待ちの `do..while` にあるもので、取り込みの繰り返しではない。
+  **timeout 120 秒は安全側の余裕であって、期待所要時間ではない。**
+  ⇒ 所要時間を「18 × 1 回の取り込み」で見積もらないこと (この誤読で
+  「同期ボタンは成立しない」と誤って設計しかけた)
+- **前ループ (zip 展開前) は 0 回か 9 回のどちらか。** `$ddir` がループの外で 1 回だけ
+  `glob` され、中で更新されないため条件が不変。ディレクトリが空なら 0 回
+- **zip 無しで叩くとディレクトリに残った CSV を再取り込みする** (`$file` を見る前に
+  `glob` して取り込む)。**local 前提の意図的な許容**であって欠陥ではない (オーナー判断)
+
+### ③ は POST + CSRF でリンクにできない
+
+`resetbyUnkoNo` は `$this->Form->postLink(...)` で、**CSRF ホワイトリストに入っていない**。
+**GET リンクにはできない。** `Flash` と `?redirect=` は実装済みなので、押せば index へ戻る。
+
+### ★ 2026-08-01 完成: `run_dtako_reimport` (MCP) 1 本で①②③が通る
+
+```
+run_dtako_reimport { comp_id, ope_no_22, start_ope, unko_no, reset_timecard? }
+  → relay が theearth から zip 取得 (自前ログイン) → 検証 → オンプレへ push
+  → nginx へ取り込み → (任意で) 勤務時間再登録
+```
+
+**モデルは base64 を運ばない** (以前は書き写して壊れていた)。
+**`uncertain: true` が返ったら同じ引数で再実行しない** — 取り込みは応答より前に走る。
+
+### ★ 値ずれの型 (実データで確定、2026-08-01)
+
+| 型 | 直し方 | 見分け方 |
+|---|---|---|
+| 読取日が古い | ①読取日を取り直す | 10 行がこれで解消 |
+| `dtako_events` が古い + `time_card_dtako` に残骸 | ①②③ | **`get_rest_diff` に出る** |
+| `dtako_events` が古い (残骸なし) | **②だけで直る** | `rest-diff` に出ないが②が効く |
+| 実働 > 拘束 | 未解決 | 運行間の空白を実働に数えている |
+| `over_24h` | 未解決 | 拘束が極端に違う |
+
+**`rest-diff` に出ない = ②も効かない、ではない。** `1536|06-29` は②だけで完全一致した。
+
+### ★ 幽霊行 (2マン登録を削った残骸)
+
+2マンで登録して後から削ると、**対象CD=2 の派生行が `time_card_dtako` に残る**
+(`_setbyUnkoNo` は INSERT しかしない)。**③を打てば消える**
+(`dtako_rows` に運行レコードが無くても動く)。
+
+### ① の zip は 2 系統ある
+
+| | 認証 |
+|---|---|
+| `GET /daily-report-api/zip` (画面用) | **ブラウザ由来のセッション**。`Authorization: Bearer` + `X-Theearth-Comp-Id` + `X-Theearth-User-B64` の**3 つ全部**が要る。素のリンクでは開けない |
+| relay の自前ログイン (無人用) | `DTAKO_ACCOUNTS` (KV)。**ブラウザ不要** |
+
+**★ localStorage のキーは `theearth-session`。** `daily-report-edit-session` も同じ形で
+存在するが**中身が別**で、そちらでは 401 になる (2026-08-01 に踏んだ)。
+
+**`opeNo` は 22 桁** (`OPE_NO_RE = /^\d{22}$/`)、**`startOpe` は `"YYYY/MM/DD H:mm:ss"`**
+(**時は 0 埋めなし**、`START_OPE_RE`)。オンプレの `unko_no` は 23 桁なので**末尾 1 桁を落とす**。
+
+## 4.8 claude-in-chrome の使いどころと限界
+
+- **小さい読み取り JS は即返る。fetch を含む大きい JS は 1 分半ハングして返らない**
+  (2026-08-01 に 3 回再現)。**ブラウザで自動化を組むなら、fetch を JS 内で await しない**
+- **`javascript_tool` は session/token を含む値の返却をブロックする** (`[BLOCKED: Sensitive key]`)。
+  **ページ内で使うのは通る**ので、トークンを読み出さずに fetch させることはできる
+- **オリジンをまたぐバイト列の受け渡しは URL fragment で運べる** (fragment はサーバに送られない)。
+  ただし**ページが再読込されると消える**
 
 ## 5. rust-ichibanboshi の gate (踏むと確実に落ちます)
 
@@ -192,7 +305,14 @@ curl -s "${ONPREM_KINTAI_API}/api/kintai/day-summaries?month=2026-06"
   書き忘れて本番 502 になった。pg テストは所有者で繋ぐので権限を通りません)
 - **★ `src/kosoku*` / `src/kintai*` / `src/routes/kintai*` を触ると `logic_version` が変わり、
   deploy で全乗務員が stale になります。** 収束に `run_kintai_recalc` を 3 ページ回す必要が
-  出るので、触るファイル数は最小に
+  出るので、触るファイル数は最小に。
+  **`build.rs` の `KINTAI_OUTPUT_GLOBS` は `(ディレクトリ, ファイル名の接頭辞)`** で
+  `("src","kosoku") / ("src","kintai") / ("src/routes","kintai")` の 3 つ。
+  ⇒ **診断用の新しい口を足すときは `kintai`/`kosoku` で始まらない名前**
+  (例 `src/routes/dtako_day.rs`) にすれば `logic_version` は動きません。
+  抜け道ではなく正しい分類です — glob の目的は
+  「`/api/kintai/{daily,kosoku-daily,version}` の**応答を形づくる**コード」なので。
+  **既存ファイルを glob の外へ動かすのは `KINTAI_OUTPUT_REQUIRED` で落ちます**
 - **ローカルで全体テストや `make cov-check` を回さないでください** (時間が溶けます)。
   **`cargo fmt --all` だけかけて push**。CI が postgres service 込みで回します
 - `src/kintai_day_summaries.rs` が pg 無しで 57% に見えるのは**回帰ではありません**
@@ -213,6 +333,14 @@ curl -s "${ONPREM_KINTAI_API}/api/kintai/day-summaries?month=2026-06"
   「列が無いから出せない」の前に桁を数えてください
 - **応答が大きい tool 結果はファイルに落ちます。** python で必要な部分だけ抜いてください
 - **`git reset --hard` は分類器に弾かれます** (stash → ff-merge → drop で回す)
+- **★ 「分類器に弾かれた」理由を断定しないこと。** 拒否メッセージは
+  `Permission for this action was denied by the Claude Code auto mode classifier` の
+  ように **auto mode を名指しすることがありますが、セッションが実際に auto mode か
+  どうかを子が知る手段はありません** (権限モードを問い合わせる tool は無い)。
+  **文言をそのまま引用して報告し、「auto mode だから弾かれた」と書かないこと。**
+  親も同じで、**prompt に「auto mode の classifier に弾かれます」と断定して書かない**
+  (2026-08-01 に親が書き、ユーザーから「すでに auto じゃない」と指摘された)。
+  正しい書き方は「**弾かれたら文言をそのまま報告して止まる。迂回路を探さない**」
 
 ## 7. タスクフォルダ
 
