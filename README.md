@@ -25,6 +25,7 @@
 - **next-session** — 次セッションへの引き継ぎ。**local Claude Code では task チップとして次を起動し、起動確認まで見届けてから自分を archive する**のが既定 (監督役の交代手順・宛先のタイトル逆引きもここ)。CCoW ではコンテナが ephemeral なため引き継ぎ用 issue (`handoff` ラベル / `$ARGUMENTS` 指定) が唯一の正本で handoff.md は作らない。どちらも使えない環境は `.claude/handoff.md` / memory。`Refs #N` / 秘密値・内部アドレスは載せない。resume-session と対。
 - **task-split** — 大きな作業を PR サイズの独立タスクに分割し、spawn_task チップで worktree 別セッションとして並行起動する**親側**の運用。親子通信プロトコルの埋め込み、起動後の交通整理、マージ順の采配まで。next-session / report-to-parent と対。
 - **report-to-parent** — spawn_task で起動された**子側**が、起動元 (親) へ `send_message` で報告する運用。着手時 / 設計判断に迷ったとき / branch push 完了時。親の見つけ方 (タイトル逆引き) を含む。
+- **gh-actions-live** — GitHub Actions の run 状態変化を Windows Chrome 拡張 (ippoan/gh-actions-live) → Linux の ws-bridge → Monitor で **push で受け取る**。`gh run list` の sleep ループの代替。Claude から github.com タブ経由で拡張の設定を入れ、bridge 経由でウィンドウ起動 / set-config / update / status。非管理 Windows の導入手順 (MSI perUser + unpacked 読み込み) と踏み抜き済みの罠 (BOM / byte[] / host_permissions / alive Origin / 再接続ストーム)。
 - **kintai-ops** — 勤怠 (kintai) まわりを 3 repo 横断 (rust-ichibanboshi / nuxt-dtako-admin / rust-alc-api) で触るときの運用知識。**merge = 本番反映ではない** (repo・worker ごとに main=staging / tag=prod / flip)、子は branch push まで PR は親、カバレッジ 100% gate と `tracing` 1 行の罠、オンプレ測定口、踏み抜き済みの罠。
 - **resume-session** — 前回の引き継ぎを読み込み即座に作業再開する。`$ARGUMENTS` の issue/comment URL → `.claude/handoff.md` → `handoff` ラベル issue の最新コメント、の順で復元 (CCoW で handoff.md が揮発しても可)。新セッション開始時 / compact 後に実行。next-session と対。
 - **wt-direct-push** — worktree から直接 push するワークフロー。
