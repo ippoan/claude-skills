@@ -45,8 +45,11 @@ curl -s -X POST localhost:8799/cmd -d '{"command":"open-dashboard","mode":"popup
 curl -s -X POST localhost:8799/cmd -d '{"command":"set-config","repos":["o/r1","o/r2"],"notify":false}'
 curl -s -X POST localhost:8799/cmd -d '{"command":"snapshot"}'      # 全 run を stdout に要約
 curl -s -X POST localhost:8799/cmd -d '{"command":"update"}'        # native host → update.ps1 → 拡張が自分で reload
-curl -s -X POST localhost:8799/cmd -d '{"command":"status"}'        # alive socket の診断 (stderr に返る)
+curl -s -X POST localhost:8799/cmd -d '{"command":"status"}'        # alive socket の診断 (ダッシュボードの {type:status} と bg の ack の 2 行)
+curl -s -X POST localhost:8799/cmd -d '{"command":"alive-reset"}'   # alive socket を閉じて張り直す (status が connected:false のまま戻らないとき)
 ```
+`status` の `alive.connected:false` が続くなら `alive.lastState` / `alive.background.relay.readyState`
+(0=CONNECTING 1=OPEN null=socket 無し) を見る。v0.0.22 以降は watchdog が勝手に張り直す (#25)。
 `delivered_to: 0` なら拡張が繋がっていない。
 
 github.com タブ経由 (**bridge URL が未設定でも届く**。鶏と卵の解):
