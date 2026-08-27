@@ -116,9 +116,12 @@ child-auditor を並列起動 (終わった子のぶんだけ)
 
 ## 6. 罠
 
-- **agent 定義はセッション開始時のスナップショット。** 追加した agent は、
-  **足したセッションからは `subagent_type` に指定できない**ことがある。
-  効かなかったら新しいセッションで試す ([[skills-live-in-claude-skills-repo]] と同型の罠)
+- **★ agent 定義はセッション開始時のスナップショット (実測 2026-08-27)。**
+  `~/.claude/agents/` に置いた直後に `subagent_type` へ指定すると
+  `Agent type 'task-surveyor' not found. Available agents: claude, …` で**必ず落ちる**。
+  **skill は即座に効くのに agent は効かない** — この非対称が紛らわしい。
+  agent を足したら**新しいセッションから使う**。今いるセッションで粘っても直らない
+  ([[mcp-tools-are-session-start-snapshot]] と同型)
 - **MCP connector は Agent tool のサブエージェントには届くが、spawn_task の子には
   引き継がれない。** これも「調査を子セッションにしない」理由の 1 つ
 - **surveyor の「該当なし」を「無い」と読まない。** 意味検索の 0 件は無いことの証明に
