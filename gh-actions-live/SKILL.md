@@ -7,6 +7,9 @@ description: >
   github.com のタブ経由 / bridge 経由でできる。トリガー: 「CI を見張って」
   「PR の CI 待ち」「Actions を watch」「gh-actions-live」「bridge」「ダッシュボード
   開いて」「拡張の設定を入れて」「run の変化を通知」「update.xml / alive socket」等。
+  Access 保護下の zone を Linux から叩くときの承認にも使う。トリガー:
+  「Access ログイン」「cloudflared access login」「wrangler dev --remote が止まる」
+  「access-login」「Approve が押せない」等。
 ---
 
 # gh-actions-live — Actions の変化を push で受ける
@@ -47,6 +50,7 @@ curl -s -X POST localhost:8799/cmd -d '{"command":"snapshot"}'      # 全 run �
 curl -s -X POST localhost:8799/cmd -d '{"command":"update"}'        # native host → update.ps1 → 拡張が自分で reload
 curl -s -X POST localhost:8799/cmd -d '{"command":"status"}'        # alive socket の診断 (ダッシュボードの {type:status} と bg の ack の 2 行)
 curl -s -X POST localhost:8799/cmd -d '{"command":"alive-reset"}'   # alive socket を閉じて張り直す (status が connected:false のまま戻らないとき)
+curl -s -X POST localhost:8799/cmd -d '{"command":"access-login","url":"https://<host>/cdn-cgi/access/cli?..."}'  # Access の承認ページを開く (§3)
 ```
 `status` の `alive.connected:false` が続くなら `alive.lastState` / `alive.background.relay.readyState`
 (0=CONNECTING 1=OPEN null=socket 無し) を見る。v0.0.22 以降は watchdog が勝手に張り直す (#25)。
@@ -62,7 +66,57 @@ chrome.runtime.sendMessage('oaadakmclelmnaieokjbhldfacfckaaj',
 `get-config` / `native-ping` で版と native host の有無が分かる。
 **別拡張の `chrome-extension://…/options.html` へは navigate できない** (Chrome が拒否)。
 
-## 3. Windows 側の導入 (1 回だけ・admin 不要)
+## 3. Cloudflare Access のログインを通す (`access-login`)
+
+**症状**: Access 保護下の zone に対して `wrangler dev --remote` を回すと、
+`cloudflared access login` の対話待ちで**無限にブロック**する。承認できるブラウザが
+Linux 側に無いのが原因なので、待っても放置しても解けない。
+
+**解**: トークンを `cloudflared` のキャッシュに入れておけば通る。**承認を押すのは
+Windows の Chrome でよい** — トークンを取りに行くのは Linux 側の `cloudflared` 自身で、
+ブラウザは Approve を押すだけだから。
+(実証 2026-08-27: `wrangler dev` Ready :8787 / `nuxt dev` Ready :3000 (HMR)、
+`curl :8787` → 200 / `:3000` → 200)
+
+```
+# 0. 許可ホストを入れる (deny-by-default。未設定だと必ず拒否される)
+curl -s -X POST localhost:8799/cmd -d '{"command":"set-config","accessLoginHosts":["dtako.ippoan.org"]}'
+
+# 1. cloudflared を起動する。URL を出して承認を待ち受ける (ここでブロックする)
+cloudflared access login dtako.ippoan.org
+
+# 2. 出た URL を Windows Chrome に開かせる → 人が Approve を押す
+curl -s -X POST localhost:8799/cmd \
+  -d '{"command":"access-login","url":"https://dtako.ippoan.org/cdn-cgi/access/cli?..."}'
+```
+
+`get-config` に `accessLoginHosts` が返るので現在値を確認できる。
+
+**有効期限は `session_duration` (既定 24h)。** 切れたら同じ手順で入れ直す。
+キャッシュ本体 `~/.cloudflared/*token` (0600) は**残してよい**。
+
+**★ トークンをログやファイルに残さない。** `cloudflared` は**標準出力に JWT を出す**。
+リダイレクトで書き出したら取得後に `shred` / `rm` する。貼り付け・grep 結果・
+親への報告にも載せない。
+
+### 開ける URL の 4 条件 (v0.0.30 以降)
+
+bridge に認証は無く、8799 に届く者が Chrome で任意のページを開けると capability の
+穴になる。そこで `access-login` が開くのは**全条件を満たす URL だけ**:
+
+1. スキームが `https:`
+2. **userinfo が空** — `https://dtako.ippoan.org@evil.example.com/...` は見た目が
+   正規ホストなのに開く先は evil。`URL.host` に userinfo は入らないので
+   ホスト検査だけでは防げない
+3. ホストが `accessLoginHosts` に**完全一致** (大小文字は無視。後方一致・ワイルドカード無し。
+   `endsWith('.ippoan.org')` 型は `evil-ippoan.org` を通す)。
+   **未設定・空配列なら全拒否** — 入れ忘れた環境が一番危険になる既定は採らない
+4. パスが `/cdn-cgi/access/cli` **ちょうど** (`new URL()` が `..` を畳んだ後の値で)
+
+弾いた URL は**ログにも応答にも全体を出さない** (`token=` の nonce が乗るため。
+出すのはホスト名とパスまで)。
+
+## 4. Windows 側の導入 (1 回だけ・admin 不要)
 
 1. Release の `gh-actions-live-x.y.z-x64.msi` を実行 (perUser)。
    `msiexec /i … REPOS=o/r BRIDGEURL=ws://<linux>:8799` で設定ごと入れられる
@@ -71,7 +125,7 @@ chrome.runtime.sendMessage('oaadakmclelmnaieokjbhldfacfckaaj',
    Chrome が Web Store 外の force_installed を捨てるため。`chrome://policy` に `[BLOCKED]` が出たらこれ)
 3. 以降の更新はダッシュボードの「更新」ボタン (native host 経由) か、上の `update` コマンド
 
-## 4. 罠 (踏み抜き済み)
+## 5. 罠 (踏み抜き済み)
 
 - **`gh run list` をループで叩かない。** この拡張が watch 対象なら変化は勝手に届く。
   watch 対象に無い repo は `set-config` で足す
