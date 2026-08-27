@@ -30,6 +30,14 @@ sonnet サブエージェントはこの巨大な基底 (~150k) を継承する�
 | `code-reviewer` | Read/Grep/Glob/Bash(固定) | 差分レビュー (重大度順) |
 | `diet-worker` | Read/Write/Edit | CLAUDE.md 骨格化 + map へ verbatim 移設 |
 | `diet-reviewer` | Read/Bash(固定) | diet の 4 点検証 (サイズ/追記のみ/欠落/規範) |
+| `task-surveyor` | Read/Grep/Glob/Bash(固定)/ToolSearch | 分割前の調査 (座標・既存実装・罠)。運用は `parent-fanout` |
+| `child-auditor` | Read/Grep/Glob/Bash(固定) | 子 branch の裏取り (compare vs [完了] 申告)。運用は `parent-fanout` |
+
+**この skill が扱うのは「1 セッション内で実装を回すループ」** (planner→coder→review)。
+**複数の子セッション (spawn_task) を監督する親が、調査と子 PR の裏取りを並列に逃がす
+ループは `parent-fanout`** — 下 2 行の agent はそちら側の道具で、`task-split` と対になる。
+subagent の thrash 対策・短ターン・wave の考え方はこの skill が正本で、`parent-fanout`
+からも参照している。
 
 起動は `agentType: <name>`。制約 (tools allowlist + 手順表 + 報告フォーマット) は
 定義に焼いてあるので、**親は「可変データ (絶対パス) を渡す」だけでよい**。

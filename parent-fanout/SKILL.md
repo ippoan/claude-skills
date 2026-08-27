@@ -135,6 +135,18 @@ child-auditor を並列起動 (終わった子のぶんだけ)
 
 ## 関連
 
+- **`subagent-orchestration`** (`.claude/skills/`) — **subagent 運用の正本。先に読むこと。**
+  こちらは「1 セッション内で実装を回すループ」(planner→plan-reviewer→coder→code-reviewer)
+  と、**thrash 対策・短ターン設計・wave 並列**を扱う。本 skill はその上に乗る
+  「**複数の子セッションを監督する親**が調査と裏取りを逃がすループ」で、役割が違う。
+  並列度・短ターンの考え方はあちらに従う (重複して書かない)
 - [[task-split]] — 分割・起票・交通整理の正本 (この skill の前後)
 - [[report-to-parent]] — 子側の通信プロトコル
 - [[next-session]] — 親の交代 (context 80% で自動的に入る)
+
+### agent 定義の `model:` は環境変数に上書きされる
+
+`CLAUDE_CODE_SUBAGENT_MODEL` が設定されていると、agent 定義の `model:` は**無視される**
+(`subagent-orchestration` の前提条件)。`task-surveyor` / `child-auditor` はどちらも
+`model: sonnet` だが、**この env が別の値なら定義側は効かない。**
+「Sonnet のつもりが違うモデルで回っていた」を疑うときはここを見る。
