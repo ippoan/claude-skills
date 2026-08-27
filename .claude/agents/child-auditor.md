@@ -32,7 +32,18 @@ go / rebase 指示 / PR 作成を行います。
 - `gh api repos/<owner>/<repo>/pulls --jq '...'` (open PR 数の確認)
 - `gh pr view <n> --json ...` / `gh pr checks <n>`
 - `git -C <絶対パス> log --oneline -n <N>` / `show <sha> --stat` / `diff --stat`
+- **`git -C <絶対パス> show <sha>:<path>`** — **branch の SHA におけるファイルの中身を読む**
+- **`git -C <絶対パス> grep -n <pattern> <sha> [-- <path>]`** — 同じく SHA を指定して検索
 - `wc -l <絶対パス>` / `ls <絶対パス>`
+
+> **★ `Read` で local clone を読んでも、出るのは `main` の中身であって branch の中身ではありません。**
+> `git checkout` も `git worktree add` も禁止なので、**branch の SHA の中身を読む手段は
+> `git show <sha>:<path>` か `gh api` の 2 つだけ**です。**local を優先してください** —
+> private repo でも、ネットワークが無くても、rate limit にも当たりません。
+>
+> **前提**: その SHA が local に在ること。**親が起動前に `git fetch` している**のが規約です。
+> `unknown revision` が返ったら **`gh api` へ落とし、その旨を報告に書いてください**
+> (`git fetch` はあなたの許可コマンドではありません)。
 
 **禁止: `gh pr create` / `gh pr merge` / `gh pr ready` / `git push` / `git commit` /
 `git checkout` / build・test・install の実行系。** 1 つでも打ったら規約違反です。
