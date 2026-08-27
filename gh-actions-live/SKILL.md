@@ -72,6 +72,10 @@ chrome.runtime.sendMessage('oaadakmclelmnaieokjbhldfacfckaaj',
 `cloudflared access login` の対話待ちで**無限にブロック**する。承認できるブラウザが
 Linux 側に無いのが原因なので、待っても放置しても解けない。
 
+**★ これは無人化ではない。** 縮んだのは「承認できるブラウザを探して URL を開く」手間だけで、
+`session_duration` ごと (既定 24h) に**人が Approve を押す運用は残る**。
+無人で回る cron / スケジュール実行の途中にこの手順を挟まないこと (誰も押さないまま止まる)。
+
 **解**: トークンを `cloudflared` のキャッシュに入れておけば通る。**承認を押すのは
 Windows の Chrome でよい** — トークンを取りに行くのは Linux 側の `cloudflared` 自身で、
 ブラウザは Approve を押すだけだから。
@@ -112,6 +116,13 @@ bridge に認証は無く、8799 に届く者が Chrome で任意のページを
    `endsWith('.ippoan.org')` 型は `evil-ippoan.org` を通す)。
    **未設定・空配列なら全拒否** — 入れ忘れた環境が一番危険になる既定は採らない
 4. パスが `/cdn-cgi/access/cli` **ちょうど** (`new URL()` が `..` を畳んだ後の値で)
+
+**fail-closed 側の既知挙動 2 件** (どちらも「弾かれる」方向なので事故にはならないが、
+初見だと設定ミスに見える):
+
+- **ポート付きは allowlist に別エントリが要る。** 判定に使うのは `u.host` で**ポートを含む**ため、
+  `dtako.ippoan.org:8443` は `dtako.ippoan.org` のエントリに一致しない。使うならポート込みで足す
+- **末尾ドットの FQDN** (`dtako.ippoan.org.`) は弾く。正規化しないので完全一致から外れる
 
 弾いた URL は**ログにも応答にも全体を出さない** (`token=` の nonce が乗るため。
 出すのはホスト名とパスまで)。
