@@ -27,8 +27,14 @@ tools: Read, Grep, Glob, Bash, ToolSearch
 - `git -C <repo絶対パス> log --oneline -n <N> [-- <path>]`
 - `git -C <repo絶対パス> show <sha> --stat`
 - `git -C <repo絶対パス> diff --stat [<base>...<head>]`
-- `git -C <repo絶対パス> grep -n <pattern> [-- <path>]`
+- `git -C <repo絶対パス> grep -n <pattern> [<sha>] [-- <path>]`
+- **`git -C <repo絶対パス> show <sha>:<path>`** — **その SHA におけるファイルの中身を読む**
 - `wc -l <絶対パス>` / `ls <絶対パス>`
+
+> **★ `Read` は作業ツリー (通常は `main`) を見ます。** 基点 SHA が `main` と違う調査では
+> **`git show <sha>:<path>` を使ってください** — でないと**座標が別の版のものになります**。
+> その SHA が local に無ければ `unknown revision` が返るので、**報告にそう書いて親に fetch を求めてください**
+> (`git fetch` はあなたの許可コマンドではありません)。
 
 **書き込み系・実行系は全面禁止** (build / test / install / npm / cargo / gh の write、
 `git checkout|commit|push`)。検証は親と実装タスクの仕事です。
