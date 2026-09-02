@@ -279,6 +279,10 @@ Authorization: Bearer <logi_auth の accessToken>
 
 **⇒ 3 つを 1 か所から自動で繋ぐ経路は無い。**
 
+- **社内 nginx の `pdf-json` (勤怠 PDF の元 JSON) はオンプレからだけ叩ける**:
+  `ssh <オンプレ (§4 のホスト)>` → `curl 'http://127.0.0.1:120/time-card/pdf-json?month=2026-04&recalc=0'`。
+  relay の `timecard-compare` の fixture (`workers/dtako-scraper-relay/test/fixtures/pdf-json-*.json`) は
+  この応答を 3 名 × 数日に間引いたもの (repo 側のコメントからは nuxt-dtako-admin#1073 で手順を伏せ、ここが正本)
 - **token を URL に載せる案は成立しません** — localStorage にあり 8 時間で失効し、履歴とログに残る
 - **CSRF cookie が HttpOnly** なので、**フォーム投稿はそのページを開いたブラウザからしか通りません**。
   サーバ側から投げようとすると CSRF を迂回することになるので、やらない
