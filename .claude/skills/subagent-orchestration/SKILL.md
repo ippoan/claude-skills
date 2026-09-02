@@ -26,6 +26,7 @@ sonnet サブエージェントはこの巨大な基底 (~150k) を継承する�
 |---|---|---|
 | `planner` | Read/Grep/Glob | 実装計画 + PR 分割 + リスク (read-only) |
 | `plan-reviewer` | Read/Grep/Glob | 計画レビュー (抜け・過大/過小分割) |
+| `simplify-reviewer` | Read/Grep/Glob/Bash(固定)/ToolSearch | 計画の肥大化検査 (根本 vs 症状 / 削れる複製の実測 / 既存実装 / 純減の収支 / 担保)。運用は `simplify-review`。hook が ExitPlanMode / spawn_task を未通過のあいだ塞ぐ |
 | `coder` | Read/Write/Edit/Grep/Glob | 実装 (Bash なし= fmt/test は親) |
 | `code-reviewer` | Read/Grep/Glob/Bash(固定) | 差分レビュー (重大度順) |
 | `diet-worker` | Read/Write/Edit | CLAUDE.md 骨格化 + map へ verbatim 移設 |
@@ -46,11 +47,13 @@ subagent の thrash 対策・短ターン・wave の考え方はこの skill が
 ## 開発ループ
 
 ```
-planner → (plan-reviewer) → coder → code-reviewer → 親が commit/PR
+planner → (plan-reviewer ∥ simplify-reviewer) → coder → code-reviewer → 親が commit/PR
 ```
 
 - `planner` に課題 + 対象**絶対パス**を渡す → 計画テキストを得る。
 - 大きな設計なら `plan-reviewer` に計画テキスト + 関連 source パスを渡す。
+- **`simplify-reviewer` には必ず通す** (計画原文 + repo 絶対パス + 基点 SHA)。plan-reviewer と
+  並列でよい。[BLOCKER]/[MAJOR] を計画に反映してから coder へ (運用と hook は `simplify-review`)。
 - 計画の各 PR を `coder` に渡す (絶対パス + 変更範囲を明示)。coder は Bash が無いので
   **fmt/test/commit は親がやる**。
 - `code-reviewer` に diff (本文で渡す or repo パス) を渡してレビュー。code-reviewer の
