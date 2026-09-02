@@ -111,7 +111,15 @@ worker ごと**に違い、tag や flip が要る系があります。**Actions 
 「その push / tag を誰が起こすか」まで確かめること。** トリガーだけ読んで「安全」と
 結論すると、読まなかった範囲で外す。
 
-`rust-alc-api` は **main merge では出ません** (`v0.0.*` タグ + Release Wave)。
+**★ `rust-alc-api` も実質「マージ = 本番」** (2026-08-29 実測で訂正)。
+機構としては `v0.0.*` タグ + Release Wave だが、**そのタグをマージのたびに CI が自動で打つ**。
+実測: `v0.0.137`→`e31d4c5` / `v0.0.136`→`5df8b03` / `v0.0.135`→`3c22224` /
+`v0.0.134`→`2f9c3a1` と、**直近 4 タグが main の直近 4 commit に 1:1** で対応。
+#600 のマージ (00:12) → `Tag Release` 自動実行 → タグ push → **`release-wave-flip` が
+00:24 に success**。**「タグ待ちだからまだ本番に出ていない」は誤り。**
+
+⇒ **上の nuxt-dtako-admin と同じ注意がここにも効く**: 機構 (どの push がどこへ出るか) を
+読んでも、**その push を誰が起こすか**を確かめないと、マージの安全性は判断できない。
 migration の本番適用は **CI のジョブが success になった時点**であって merge 時点では
 ありません。
 
@@ -123,7 +131,7 @@ repo 固有:
 
 - **`ippoan/rust-alc-api` は同一作者の open PR が 1 本まで** (2 本目は PR Limit Check で落ちる)。
   **`crates/` / `src/` / `migrations/` を触ったら同じ PR で map 再生成** (map-check は enforce=fail)。
-  **main merge では本番に出ません** — deploy は `v0.0.*` タグ + Release Wave
+  **マージ = 実質本番** — `v0.0.*` タグを CI が自動で打ち、Release Wave が flip する (上の訂正を参照)
 - **`ohishi-exp/nuxt-dtako-admin` は root の `npm install` が通りません** (`@ippoan/*` が
   GitHub Packages)。front は CI が初検証、relay worker だけローカルで回ります
   - **★ front の実機確認は、まず preview を見てください。ローカル dev を立てる前に。**
