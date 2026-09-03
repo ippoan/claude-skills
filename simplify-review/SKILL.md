@@ -73,6 +73,8 @@ Agent(subagent_type: "simplify-reviewer", prompt: <下の入力>)
 | 3 | 既存実装 | 新規 symbol ごとの意味検索 + grep | 在る → [MAJOR] 再発明。0 件は「未確認」 |
 | 4 | 純減の収支 | + helper/テスト/登録簿 vs − 合成形 | 削減を名乗って + ≥ − → [MAJOR]。UI を gate に登録 → [MAJOR] |
 | 5 | 担保 | 触る route にいま在る認可・fail-closed・allowlist・禁止語 | 削る/触れない → [BLOCKER] |
+| 5-b | 新しい入口の到達面 | 到達性 / 認可 / **宛先を public repo に書くか** / 資格情報の運び方。**読み取り専用でも measure する** | 認可の記述が無い → [BLOCKER] |
+| 5-c | 「旧より厳格」の検算 | 新旧を**口ごと・軸ごと**に 1 対 1 で並べ、対応物の無い口／軸を名指し | 比較が届かない口／軸がある → [BLOCKER] |
 
 ## 3. 機械的な栓 (hook)
 
