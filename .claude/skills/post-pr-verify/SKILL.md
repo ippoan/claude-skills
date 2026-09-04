@@ -62,19 +62,27 @@ token を Claude が運ぶ必要も、wrangler dev やローカルブラウザ�
   **ブラウザ側の実際の挙動 (subprotocol にトークンを載せる等) を見たいなら、
   curl より `verify_eval` の中で `new WebSocket(...)` を張る方が正確**
   (ページの cookie/token をそのまま使えるので、本番の認証込みで確かめられる)。
-- **★★ この 2 tool は本番スコープ。staging の検証には使えません。**
-  dev JWT を発行するのは**本番の auth-worker (`auth.ippoan.org`)** なので、
+- **★★ この 2 tool は「繋いでいる connector の env」に閉じています。**
+  **本番の connector から staging の URL を開いてはいけません。** dev JWT を発行するのは
+  その connector の auth-worker (本番なら `auth.ippoan.org`) なので、
   `*-staging.ippoan.org` を開いても **本番の `tenant_id` を持った cookie が入ります**。
   staging の API は **200 を返すのに 0 件**になり、「データが無い」と誤読します。
   - **実測 (2026-09-04)**: 同じ dev セッションで `tenant_id` が
     prod (`alc.ippoan.org`) / staging (`alc-staging.ippoan.org`) とも
     **`536859de-…` で完全一致**。host を変えても token は変わりません
-  - ⇒ **staging で「出ているはずのものが出ない」を見ても、それは検証結果ではありません。**
-    staging を確かめるには**ユーザーの実ブラウザ**が要ります
-  - この skill が「merge されて deploy された後」= **prod 専用**なのは、この制約とも整合します
-  - **※ 道具側を直す案が検討中** (ippoan/auth-worker): staging の URL を明示的に拒否する
-    案が入れば、**静かに誤った結果が返る**代わりに**弾かれる**ので、誤読が構造的に
-    起きなくなります。入ったらこの項目を「拒否されるので誤読しようがない」に書き換えること
+  - ⇒ **本番 connector で staging を見て「出ているはずのものが出ない」を観測しても、
+    それは検証結果ではありません。**
+  - **★ staging を検証するなら staging の MCP connector を使います。**
+    `https://mcp-staging.ippoan.org/...` を別の connector として繋いで Google 認可すれば、
+    **その connector の `verify_*` は staging をネイティブに検証できます** —
+    staging worker は `[env.staging.browser]` の `BROWSER` binding も
+    staging 専用の `MCP_OAUTH_KV` も持っています (auth-worker の `wrangler.toml` に
+    **「MCP スタックは staging を実運用として扱うため、verify_screenshot も staging で
+    主に使われる」**と書かれています)。**「staging は検証できない」ではありません。
+    道具を取り違えているだけです**
+  - **※ auth-worker 側で「自分の env でない host は弾く」修正が予定されています。**
+    入れば**静かに誤った結果が返る**代わりに**弾かれる**ので、誤読が構造的に起きなく
+    なります。入ったらこの項目を「別 env の URL は弾かれる」に書き換えること
 - **★ スクショの「空」は 2 つの意味がある。** 「認証が通っていなくて空」と
   「データが無くて空」は、**`verify_screenshot` では区別できません**。
   画面にメールアドレスやユーザー名が出ていても、それは**フロントが cookie を
