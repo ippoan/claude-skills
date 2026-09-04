@@ -124,7 +124,15 @@ migration の本番適用は **CI のジョブが success になった時点**�
 ありません。
 
 - **`gh pr create` を実行しないでください。** 子セッションでは classifier に拒否されます
-- **branch push まで**やって親に報告 → **PR は親が作ります**。feature branch push でも CI は回るので、検証はそれで足ります
+- **branch push まで**やって親に報告 → **PR は親が作ります**。
+  **★ ただし `ippoan/rust-alc-api` / `ippoan/alc-app` は feature branch の push で CI が
+  1 本も回りません** (workflow が `on: push: branches: [main]` + `pull_request: branches: [main]`
+  のみ。`alc-app` の `skills-check.yml` に至っては `pull_request` だけ。2026-09-04 実測)。
+  **PR を出した時点が初検証**になるので、子は**「CI 未実施」と明記して**渡し、手元で回せるもの
+  (`cargo test --test <bin> -- <filter>` / `cargo fmt` / `cargo clippy`) の結果を添えること。
+  **coverage gate と skills-check も PR でしか動きません。**
+  (`ohishi-exp/nuxt-dtako-admin` は別で、main 以外への push で preview が出る = §1 の repo 固有を参照。
+  `ohishi-exp/rust-ichibanboshi` は未実測なので、必要になったら `.github/workflows/` の `on:` を読むこと)
 - 唯一のブレーキは CI です
 
 repo 固有:
