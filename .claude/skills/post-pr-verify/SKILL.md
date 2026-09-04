@@ -72,9 +72,13 @@ token を Claude が運ぶ必要も、wrangler dev やローカルブラウザ�
     **`536859de-…` で完全一致**。host を変えても token は変わりません
   - ⇒ **本番 connector で staging を見て「出ているはずのものが出ない」を観測しても、
     それは検証結果ではありません。**
-  - **★ staging を検証するなら staging の MCP connector を使います。**
-    `https://mcp-staging.ippoan.org/...` を別の connector として繋いで Google 認可すれば、
-    **その connector の `verify_*` は staging をネイティブに検証できます** —
+  - **★ staging を検証するなら staging の MCP connector を使います。** 手順は 2 つ:
+    ① claude.ai の connector に **`https://auth-staging.ippoan.org/mcp/google`** を足して
+    Google 認可する (本番の `https://auth.ippoan.org/mcp/google` と対)。
+    ② **staging の KV は別 namespace なので allowlist も要ります**:
+    `wrangler kv key put --binding=MCP_OAUTH_KV --env staging dev_login_allowed_subjects '["google:<email>"]'`
+    (`--env staging` を忘れると prod の namespace に書いて 403 のまま)。
+    これで **その connector の `verify_*` は staging をネイティブに検証できます** —
     staging worker は `[env.staging.browser]` の `BROWSER` binding も
     staging 専用の `MCP_OAUTH_KV` も持っています (auth-worker の `wrangler.toml` に
     **「MCP スタックは staging を実運用として扱うため、verify_screenshot も staging で
