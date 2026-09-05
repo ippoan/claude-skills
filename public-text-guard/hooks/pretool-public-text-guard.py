@@ -9,6 +9,16 @@
 PR 本文は作った瞬間に公開ページと git 履歴へ載る。CI や分類器の deny を見てから直しても、
 本文はもう出ている。**止めるなら作成前しかない。**
 
+コマンド全文は**常に**走査する (#157 で一度は弱めかけたが、それは誤り)。
+`--title` / `--label` や、パイプ前の別コマンドに載る語はそこにしか現れない。
+実運用で 2 回続けて誤爆した原因は「全文を見ていること」ではなく
+「**パスの中の UUID を本番識別子と見なしていたこと**」なので、直したのは
+スキャナ側の当て方 (`_is_path_uuid`) と、`--body-file` の解決の強さの 2 つだけ。
+
+本文を最後まで読めなかったときは **「検査できていない」として deny する**
+(fail-closed)。PermissionDenied hook は pass した呼び出しには発火しないので、
+ここを fail-open にすると誰も見ない。
+
 もう 1 つの役目: PermissionDenied hook が置いた走査結果 (pending) を回収し、
 `additionalContext` としてモデルへ渡す。PermissionDenied の hookSpecificOutput は
 `retry` しか持たない (= 当たった語を直接返す口が無い) ため、この 2 本で橋を架けている。
@@ -28,6 +38,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
+from resolve_body_file import BodyFileResolver, split_commands  # noqa: E402
 from scan_public_text import format_findings, scan  # noqa: E402
 
 STATE_DIR = os.path.join(
@@ -44,8 +55,6 @@ PUBLISHING_SUBCOMMANDS = {("pr", "create"), ("pr", "comment"),
 TEXT_FLAGS = {"--title", "-t", "--body", "-b"}
 FILE_FLAGS = {"--body-file", "-F"}
 REPO_FLAGS = {"--repo", "-R"}
-# shlex は演算子も 1 トークンとして返す。ここで次のコマンドとの境目を切る。
-COMMAND_SEPARATORS = {"&&", "||", ";", "|", "&", "\n"}
 
 
 def safe_session_id(session_id: str) -> str:
@@ -72,17 +81,6 @@ def drain_pending(session_id: str) -> str:
     return body.strip()
 
 
-def split_commands(tokens: list[str]) -> list[list[str]]:
-    """`&&` などで区切って、コマンドごとのトークン列にする。"""
-    commands: list[list[str]] = [[]]
-    for token in tokens:
-        if token in COMMAND_SEPARATORS:
-            commands.append([])
-        else:
-            commands[-1].append(token)
-    return [c for c in commands if c]
-
-
 def find_publishing_invocations(tokens: list[str]) -> list[list[str]]:
     """公開系の `gh <pr|issue> <create|comment>` だけを取り出す。"""
     found = []
@@ -106,8 +104,14 @@ def _flag_value(args: list[str], index: int) -> tuple[str | None, int]:
     return None, index + 1
 
 
-def collect_public_text(args: list[str]) -> tuple[list[tuple[str, str]], str | None, list[str]]:
-    """公開されるテキストと、対象 repo と、読めなかったファイルを集める。"""
+def collect_public_text(
+    args: list[str], resolver: BodyFileResolver
+) -> tuple[list[tuple[str, str]], str | None, list[str]]:
+    """公開されるテキストと、対象 repo と、**確認できなかった本文**を集める。
+
+    3 つ目は「読めなかった `--body-file`」。空でなければ、その呼び出しの本文を
+    guard は検査できていない。呼び手はそれを fail-closed の deny に使う。
+    """
     texts: list[tuple[str, str]] = []
     repo: str | None = None
     unreadable: list[str] = []
@@ -122,13 +126,17 @@ def collect_public_text(args: list[str]) -> tuple[list[tuple[str, str]], str | N
             continue
         if head in FILE_FLAGS:
             path, i = _flag_value(args, i)
-            if path is None or path == "-":
+            if path is None:
                 continue
-            try:
-                with open(os.path.expanduser(path), encoding="utf-8", errors="replace") as fh:
-                    texts.append((path, fh.read()))
-            except OSError:
+            if path == "-":
+                # 本文は stdin (heredoc)。ファイルとしては読めないので確認できない扱い。
+                unreadable.append("- (stdin / heredoc)")
+                continue
+            text = resolver.read(path)
+            if text is None:
                 unreadable.append(path)
+            else:
+                texts.append((path, text))
             continue
         if head in REPO_FLAGS:
             value, i = _flag_value(args, i)
@@ -170,8 +178,11 @@ def main() -> int:
 
     try:
         tokens = shlex.split(command, comments=False)
+        quoting_broken = False
     except ValueError:
         tokens = command.split()
+        # 引用が壊れているとフラグの値を信用できない。本文を確認できたとは言えない。
+        quoting_broken = True
 
     invocations = find_publishing_invocations(tokens)
     if not invocations:
@@ -194,16 +205,25 @@ def main() -> int:
     all_findings: list[tuple[str, list[tuple[int, str, str]]]] = []
     repo: str | None = None
     unreadable: list[str] = []
+    resolver = BodyFileResolver(command)
     sources: list[tuple[str, str]] = []
     for args in invocations:
-        texts, found_repo, missed = collect_public_text(args)
+        texts, found_repo, missed = collect_public_text(args, resolver)
         repo = repo or found_repo
         unreadable += missed
         sources += texts
     # フラグ解析に頼り切らず、コマンド全文も必ず走査する。
     # 引用が壊れて shlex が失敗した場合・heredoc・`--body "$(...)"` の中身は
     # フラグ単位では拾えないが、公開系 gh のコマンド全文に載っていれば当たる。
+    # `--title` / `--label` や、パイプ前の別コマンドに載る語もここでしか見えない。
+    # 誤爆の原因は「全文を見ていること」ではなく「パスの中の UUID を本番識別子と
+    # 見なしていたこと」なので、直したのはスキャナ側の当て方だけ (#157)。
     sources.append(("(コマンド全文)", command))
+
+    # 本文を確認できていない呼び出し。空でなければ、当たりの有無に関わらず deny する。
+    unconfirmed = list(unreadable)
+    if quoting_broken:
+        unconfirmed.append("(引用が壊れていてフラグを解析できない)")
 
     seen: set[tuple[str, str]] = set()
     for source, text in sources:
@@ -212,7 +232,7 @@ def main() -> int:
         if findings:
             all_findings.append((source, findings))
 
-    if not all_findings:
+    if not all_findings and not unconfirmed:
         if pending:
             emit({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                          "additionalContext": pending}})
@@ -225,8 +245,9 @@ def main() -> int:
 
     if visibility == "PRIVATE":
         sys.stderr.write(
-            "[public-text-guard] private repo (%s) なので素通ししましたが、"
-            "次が本文に含まれています:\n%s\n" % (repo or "cwd", detail)
+            "[public-text-guard] private repo (%s) なので素通ししました%s\n"
+            % (repo or "cwd",
+               ("が、次が本文に含まれています:\n" + detail) if detail else " (本文は未確認)。")
         )
         if pending:
             emit({"hookSpecificOutput": {"hookEventName": "PreToolUse",
@@ -236,24 +257,38 @@ def main() -> int:
     unknown_note = ""
     if visibility == "UNKNOWN":
         unknown_note = (
-            "\n(repo の visibility を判定できなかったため public として扱いました: %s)"
+            "(repo の visibility を判定できなかったため public として扱いました: %s)\n"
             % (why_unknown or "理由不明")
         )
-    unreadable_note = ""
-    if unreadable:
-        unreadable_note = "\n(読めなかった --body-file: %s)" % ", ".join(unreadable)
+
+    detected_note = ""
+    if all_findings:
+        detected_note = (
+            "公開される本文に本番識別子・資格情報が含まれています:\n%s\n"
+            "値を伏せてから (プレースホルダに置換するか、その行ごと落として) やり直してください。\n"
+            % detail
+        )
+    # ここは「当たった」ではなく「見られていない」。断定しないのが要点 (#157 の決定 3)。
+    unconfirmed_note = ""
+    if unconfirmed:
+        unconfirmed_note = (
+            "本文を読めなかったので、**検査できていません** (含まれているとは限りません):\n"
+            "  %s\n"
+            "検査できないまま公開はできないので止めました。次のどちらかで読める形にしてください:\n"
+            "  - 本文の実体ファイルを、パスに UUID を含まない場所へ置く\n"
+            "  - 本文の作成 (cp / リダイレクト / heredoc) と gh を、別々の Bash 呼び出しに分ける\n"
+            % "\n  ".join(unconfirmed)
+        )
 
     reason = (
-        "公開される本文に本番識別子・資格情報が含まれています。"
         "PR / issue は作成した瞬間に公開ページと git 履歴へ載るので、作成前に止めました。\n"
-        "%s%s%s\n\n"
-        "値を伏せてから (プレースホルダに置換するか、その行ごと落として) やり直してください。\n"
+        "%s%s%s\n"
         "検査が誤爆している場合だけ、次のファイルを作れば このセッションでは素通しします:\n"
         "  %s\n"
         "%s" % (
-            detail,
+            detected_note,
+            unconfirmed_note,
             unknown_note,
-            unreadable_note,
             os.path.join(ALLOW_DIR, safe_session_id(session_id) or "<session_id>"),
             pending and ("\n直前の拒否についての走査結果:\n" + pending) or "",
         )

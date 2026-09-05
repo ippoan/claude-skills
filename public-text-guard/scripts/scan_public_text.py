@@ -9,7 +9,8 @@ CLI:
     出力: `行番号:種別:語` を 1 行 1 件。当たりがあれば exit 1、無ければ exit 0。
 
 方針は「取りこぼしより誤爆を嫌う」。誤爆する検査は使われなくなり、使われない検査は
-何も守らないため。git SHA・プレースホルダ・英単語は当てない (下の EXCLUDE を参照)。
+何も守らないため。git SHA・プレースホルダ・英単語・**パス様トークンの中の UUID** は
+当てない (`_is_device_credential` / `_is_placeholder_uuid` / `_is_path_uuid` を参照)。
 
 内部ホスト名のような **repo に書けない語** はここに書かず、
 `~/.claude/state/public-text-guard/denylist` (1 行 1 語) から読む。
@@ -58,6 +59,23 @@ def _is_placeholder_uuid(match: str) -> bool:
     16 進の中身が 1 種類の文字だけで出来ていれば、それは値ではなく形の説明。
     """
     return len(set(match.replace("-", "").lower())) == 1
+
+
+def _is_path_uuid(line: str, span: tuple[int, int]) -> bool:
+    """`/tmp/…/<UUID>/scratchpad` のような**パスの中の** UUID を除外する。
+
+    空白で区切った語に `/` が在れば、それは公開される値ではなく作業パス。
+    公開文に載る UUID は `device_id=…` のように語として立つ。
+
+    コマンド全文を走査する以上ここは必ず視界へ入り、実運用の 1 本目で
+    2 回続けて誤爆した (#157)。誤爆する検査は外され、外れた検査は何も守らない。
+    """
+    start, end = span
+    while start > 0 and not line[start - 1].isspace():
+        start -= 1
+    while end < len(line) and not line[end].isspace():
+        end += 1
+    return "/" in line[start:end]
 
 
 def _is_device_credential(token: str) -> bool:
@@ -127,8 +145,8 @@ def scan(text: str, denylist: list[str] | None = None) -> list[tuple[int, str, s
             return True
 
         for m in UUID_RE.finditer(line):
-            if _is_placeholder_uuid(m.group(0)):
-                _claim(m.span())  # 見本も占有はする (device 風で拾い直さないため)
+            if _is_placeholder_uuid(m.group(0)) or _is_path_uuid(line, m.span()):
+                _claim(m.span())  # 見本もパスも占有はする (device 風で拾い直さないため)
                 continue
             if _claim(m.span()):
                 findings.append((lineno, "uuid", m.group(0)))

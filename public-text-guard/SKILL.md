@@ -30,17 +30,44 @@ Reason: Blocked by classifier.
 ```
 public-text-guard/
   scripts/scan_public_text.py           ← 判定ロジックはここ 1 か所だけ
+  scripts/resolve_body_file.py          ← --body-file のパス解決。2 hook が共有
   hooks/pretool-public-text-guard.py    ← PreToolUse / matcher: Bash
   hooks/permission-denied-scan.py       ← PermissionDenied / matcher: *
-  tests/run_tests.py                    ← 13 ケース。HOME と gh を差し替えて回す
+  tests/run_tests.py                    ← 21 ケース。HOME と gh を差し替えて回す
 ```
 
 **スキャナは 1 本。** 2 つの hook がどちらもこれを import する。
 判定が 2 か所に分かれると必ず食い違い、片方だけ直して忘れる。
 
+### 何を走査対象にするか
+
 `PreToolUse` は `--title` / `--body` / `--body-file` を個別に走査したうえで、
 **コマンド全文も必ず走査する**。フラグ解析だけに頼ると、引用が壊れて `shlex` が失敗した
-コマンドや heredoc (`--body-file -`) がそのまま素通しした (実装中に実測。tests 12〜13)。
+コマンドや heredoc (`--body-file -`) がそのまま素通しし (tests 12〜13)、
+`--label` やパイプ前の別コマンドに載る語は**どこからも見えなくなる** (test 21)。
+
+`--body-file` は `resolve_body_file` が**同じコマンド文字列の文脈込みで**開く (#157):
+
+- `SP=…` のような単純な変数代入を拾って `"$SP/pr.md"` / `"${SP}/pr.md"` を展開する
+- `cp <src> <dst>` / `mv` / `cat <src> > <dst>` で**直前に作られる**本文は、
+  まだ存在しないので**コピー元 `<src>` を読む** (PreToolUse は実行の**前**に走る)
+
+**本文を最後まで読めなかったら deny する (fail-closed)**。deny 文言は
+「含まれている」と断定せず、「本文を読めなかったので検査できていない」と、対処
+(パスに UUID を含まない場所へ本文を置く / 本文の作成と `gh` を別の Bash 呼び出しに分ける)
+を示す。**ここを fail-open にしないこと。** `PermissionDenied` hook は
+**PreToolUse が pass した呼び出しには発火しない** (実測)。
+「2 段構えだから緩めてよい」は成り立たない。
+
+### 誤爆したときに直す場所 (#157 の教訓)
+
+実運用の 1 本目で 2 回続けて誤爆した。どちらも本番識別子ではなく、
+**作業パスに含まれるセッション UUID** (`/tmp/…/<UUID>/scratchpad`) だった。
+
+直したのは**当て方**であって、走査範囲ではない。
+「全文を見ているのが悪い」と考えて全文走査を弱めると、上に挙げた
+`--label` やパイプ前の語が塞げなくなる。**当たり方の 1 点** —
+`_is_path_uuid` (パス様トークンの中の UUID は当てない) — だけを外す。
 
 ## 2. 何を当てるか / 当てないか
 
@@ -57,6 +84,9 @@ public-text-guard/
 - **git SHA** — 7 / 40 桁 hex は長さで外れ、20〜24 桁 hex も「16 進のみ」で落ちる
 - **プレースホルダ** — `00000000-0000-0000-0000-000000000000` のように 16 進の中身が
   1 種類の文字だけの UUID は、値ではなく形の説明なので除外
+- **パス様トークンの中の UUID** — `/tmp/…/<UUID>/scratchpad` のように `/` を含む語の
+  一部として出てきた UUID は当てない (#157)。公開文に載る UUID は `device_id=…` のように
+  語として立つ。この除外を入れる前は、作業パスの UUID で 2 回続けて誤爆した
 - **英単語・kebab-case の識別子** — `internationalization` や `public-text-guard-hook` は
   「大文字・小文字・数字を全部含む」条件で落ちる
 
@@ -174,8 +204,12 @@ python3 public-text-guard/tests/run_tests.py
 ```
 
 `HOME` を一時ディレクトリへ、`gh` を stub へ差し替えて回すので、
-**`~/.claude/state/` の実物にも本物の GitHub にも触らない**。13 ケース全 PASS で exit 0。
-1〜11 は issue #153 の受け入れ条件そのもの、12〜13 はすり抜けの回帰防止。
+**`~/.claude/state/` の実物にも本物の GitHub にも触らない**。21 ケース全 PASS で exit 0。
+1〜11 は issue #153 の受け入れ条件そのもの、12〜13 はすり抜けの回帰防止、
+14〜21 は #157 の誤爆 2 経路と、そこを直しても緩めてはいけない 6 点。
+
+**CI で回る** (`.github/workflows/knowledge-check.yml`)。`public-text-guard/**` を
+触る PR で blocking。#157 まではこの repo の python は CI で 1 行も回っていなかった。
 
 ## 9. この hook で解けないこと
 
