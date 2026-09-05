@@ -337,6 +337,24 @@ def case_21(sb):
     return ok, "--label=%s / パイプ前=%s (本文の外はコマンド全文でしか見えない)" % tuple(results)
 
 
+def case_22(sb):
+    """22 | hook 1 | 本文は読めるが --title に UUID | deny + 全文走査単体でも当たる"""
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    from scan_public_text import scan  # noqa: PLC0415
+    body = sb.write(os.path.join(sb.work, "body.md"), "本文に識別子は無い。\n")
+    command = ("gh pr create --repo ippoan/claude-skills --title 'device %s' --body-file %s"
+               % (SAMPLE_UUID, body))
+    proc, parsed = run_hook(PRETOOL, bash_payload(command), sb)
+    # フラグ側 (TEXT_FLAGS の --title) だけでなく、**コマンド全文の走査単体でも**当たること。
+    # 全文走査を弱めると、ここが最初に落ちる。
+    from_command = [f[2] for f in scan(command, denylist=[])]
+    ok = (decision(parsed) == "deny" and SAMPLE_UUID in reason(parsed)
+          and SAMPLE_UUID in from_command)
+    return ok, "decision=%s / 文言に語=%s / 全文走査単体=%s" % (
+        decision(parsed), "有" if SAMPLE_UUID in reason(parsed) else "無",
+        "当たる" if SAMPLE_UUID in from_command else "当たらない")
+
+
 def case_19(sb):
     """19 | scan | パス内の UUID は当てず、語として立つ UUID と資格情報は当てる"""
     sys.path.insert(0, os.path.join(ROOT, "scripts"))
@@ -353,13 +371,16 @@ def case_19(sb):
 
 # 1〜11 は issue #153 の受け入れ条件そのもの。12〜13 は実装中に見つけた
 # すり抜け (フラグ解析だけに頼ると素通しした) の回帰防止。
-# 14〜21 は issue #157: 作業パスの UUID による誤爆 2 経路 (14/15) と、
-# それを直しても緩めてはいけない 6 点 (16/20 資格情報は全文でも当てる /
-# 17 fail-closed / 18 検出力 / 19 スキャナ単体 / 21 本文の外もコマンド全文で見る)。
+# 14〜22 は issue #157: 作業パスの UUID による誤爆 2 経路 (14/15) と、
+# それを直しても緩めてはいけない 7 点 (16/20 資格情報は全文でも当てる /
+# 17 fail-closed / 18 検出力 / 19 スキャナ単体 / 21・22 本文の外もコマンド全文で見る)。
+# **21・22 が「コマンド全文の走査を弱めるな」の見張り番**。誤爆を直すときは
+# 走査範囲ではなく当て方 (_is_path_uuid) を触ること。
 CASES = [case_01, case_02, case_03, case_04, case_05, case_06,
          case_07, case_08, case_09, case_10, case_11,
          case_12, case_13,
-         case_14, case_15, case_16, case_17, case_18, case_19, case_20, case_21]
+         case_14, case_15, case_16, case_17, case_18, case_19, case_20,
+         case_21, case_22]
 
 
 def main() -> int:

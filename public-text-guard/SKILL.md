@@ -33,7 +33,7 @@ public-text-guard/
   scripts/resolve_body_file.py          ← --body-file のパス解決。2 hook が共有
   hooks/pretool-public-text-guard.py    ← PreToolUse / matcher: Bash
   hooks/permission-denied-scan.py       ← PermissionDenied / matcher: *
-  tests/run_tests.py                    ← 21 ケース。HOME と gh を差し替えて回す
+  tests/run_tests.py                    ← 22 ケース。HOME と gh を差し替えて回す
 ```
 
 **スキャナは 1 本。** 2 つの hook がどちらもこれを import する。
@@ -45,6 +45,7 @@ public-text-guard/
 **コマンド全文も必ず走査する**。フラグ解析だけに頼ると、引用が壊れて `shlex` が失敗した
 コマンドや heredoc (`--body-file -`) がそのまま素通しし (tests 12〜13)、
 `--label` やパイプ前の別コマンドに載る語は**どこからも見えなくなる** (test 21)。
+`--title` はフラグ側でも当たるが、**全文走査単体でも当たること**を test 22 で固定してある。
 
 `--body-file` は `resolve_body_file` が**同じコマンド文字列の文脈込みで**開く (#157):
 
@@ -204,9 +205,9 @@ python3 public-text-guard/tests/run_tests.py
 ```
 
 `HOME` を一時ディレクトリへ、`gh` を stub へ差し替えて回すので、
-**`~/.claude/state/` の実物にも本物の GitHub にも触らない**。21 ケース全 PASS で exit 0。
+**`~/.claude/state/` の実物にも本物の GitHub にも触らない**。22 ケース全 PASS で exit 0。
 1〜11 は issue #153 の受け入れ条件そのもの、12〜13 はすり抜けの回帰防止、
-14〜21 は #157 の誤爆 2 経路と、そこを直しても緩めてはいけない 6 点。
+14〜22 は #157 の誤爆 2 経路と、そこを直しても緩めてはいけない 7 点。
 
 **CI で回る** (`.github/workflows/knowledge-check.yml`)。`public-text-guard/**` を
 触る PR で blocking。#157 まではこの repo の python は CI で 1 行も回っていなかった。
