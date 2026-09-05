@@ -36,6 +36,7 @@ import shlex
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
+from resolve_body_file import BodyFileResolver  # noqa: E402
 from scan_public_text import format_findings, scan  # noqa: E402
 
 STATE_DIR = os.path.join(
@@ -64,11 +65,16 @@ def safe_session_id(session_id: str) -> str:
 
 
 def _read_body_files(command: str) -> list[str]:
-    """`--body-file <path>` が指すファイルの中身も走査対象に含める。"""
+    """`--body-file <path>` が指すファイルの中身も走査対象に含める。
+
+    パスの解決 (`$VAR` の展開・`cp` の生成元たどり) は
+    `resolve_body_file` に委ねる。PreToolUse 側と解決の強さを揃えるため。
+    """
     try:
         tokens = shlex.split(command, comments=False)
     except ValueError:
         return []
+    resolver = BodyFileResolver(command)
     texts = []
     for i, token in enumerate(tokens):
         head, _, inline = token.partition("=")
@@ -77,11 +83,9 @@ def _read_body_files(command: str) -> list[str]:
         path = inline if inline else (tokens[i + 1] if i + 1 < len(tokens) else "")
         if not path or path == "-":
             continue
-        try:
-            with open(os.path.expanduser(path), encoding="utf-8", errors="replace") as fh:
-                texts.append(fh.read())
-        except OSError:
-            continue
+        text = resolver.read(path)
+        if text is not None:
+            texts.append(text)
     return texts
 
 

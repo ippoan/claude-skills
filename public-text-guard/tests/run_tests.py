@@ -27,6 +27,8 @@ DENIED = os.path.join(ROOT, "hooks", "permission-denied-scan.py")
 SAMPLE_UUID = "3f2a91c4-7b6e-4d15-9a80-c2e5b41f70d8"
 PLACEHOLDER_UUID = "00000000-0000-0000-0000-000000000000"
 GIT_SHA = "5c6d28928bd54f1a9e07b3c8d2416af07be91d3c"  # 40 桁 hex
+# 作業ディレクトリのパスに紛れる側の UUID。#157 の誤爆はこの位置で起きた。
+PATH_UUID = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
 FAKE_TOKEN = "ghp_xxxx"
 DENYLIST_WORD = "internal-example-host.invalid"
 
@@ -250,11 +252,157 @@ def case_13(sb):
     return ok, "decision=%s (stdin 本文もコマンド全文に載っていれば当たる)" % decision(parsed)
 
 
+def case_14(sb):
+    """14 | hook 1 | $VAR 展開が要る --body-file (本文は綺麗) | 素通し (#157 再現 1)"""
+    scratch = os.path.join(sb.work, PATH_UUID, "scratchpad")
+    sb.write(os.path.join(scratch, "pr.md"), "## 概要\n\n本文に識別子は無い。\n")
+    proc, parsed = run_hook(PRETOOL, bash_payload(
+        'SP=%s\ngh pr create --repo ippoan/claude-skills --title t --body-file "$SP/pr.md"'
+        % scratch), sb)
+    ok = decision(parsed) == "pass"
+    return ok, "decision=%s / 文言=%r" % (decision(parsed), reason(parsed)[:120])
+
+
+def case_15(sb):
+    """15 | hook 1 | cp で作る直前の --body-file (本文は綺麗) | 素通し (#157 再現 2)"""
+    src = sb.write(os.path.join(sb.work, PATH_UUID, "scratchpad", "pr.md"), "本文。\n")
+    dst = os.path.join(sb.dir, "pr-body.md")  # まだ存在しない (PreToolUse は実行前)
+    proc, parsed = run_hook(PRETOOL, bash_payload(
+        "cp %s %s && gh pr create --repo ippoan/claude-skills --title t --body-file %s"
+        % (src, dst, dst)), sb)
+    ok = decision(parsed) == "pass" and not os.path.exists(dst)
+    return ok, "decision=%s / dst は未作成=%s" % (decision(parsed), not os.path.exists(dst))
+
+
+def case_16(sb):
+    """16 | hook 1 | 本文は読めるがコマンド全文に ghp_ | deny (資格情報は全文でも当てる)"""
+    body = sb.write(os.path.join(sb.work, "body.md"), "本文。\n")
+    proc, parsed = run_hook(PRETOOL, bash_payload(
+        "GH_TOKEN=%s gh pr create --repo ippoan/claude-skills --title t --body-file %s"
+        % (FAKE_TOKEN, body)), sb)
+    ok = decision(parsed) == "deny" and FAKE_TOKEN in reason(parsed)
+    return ok, "decision=%s / 語=%s" % (
+        decision(parsed), FAKE_TOKEN if FAKE_TOKEN in reason(parsed) else "無")
+
+
+def case_17(sb):
+    """17 | hook 1 | 最後まで読めない --body-file | deny + 「検査できていません」(fail-closed)"""
+    missing = os.path.join(sb.work, "does-not-exist.md")
+    proc, parsed = run_hook(PRETOOL, bash_payload(
+        "gh pr create --repo ippoan/claude-skills --title t --body-file %s" % missing), sb)
+    text = reason(parsed)
+    ok = (decision(parsed) == "deny" and "検査できていません" in text
+          and "含まれています" not in text.split("検査できていません")[0])
+    return ok, "decision=%s / 文言=%s" % (
+        decision(parsed), "検査できていません 有" if "検査できていません" in text else "不足")
+
+
+def case_18(sb):
+    """18 | hook 1 | $VAR 展開で読めた本文に UUID | deny (解決は検出を弱めない)"""
+    scratch = os.path.join(sb.work, PATH_UUID, "scratchpad")
+    sb.write(os.path.join(scratch, "pr.md"), "device_id=%s\n" % SAMPLE_UUID)
+    proc, parsed = run_hook(PRETOOL, bash_payload(
+        'SP=%s\ngh pr create --repo ippoan/claude-skills --title t --body-file "$SP/pr.md"'
+        % scratch), sb)
+    ok = decision(parsed) == "deny" and SAMPLE_UUID in reason(parsed)
+    return ok, "decision=%s / 語=%s" % (
+        decision(parsed), SAMPLE_UUID if SAMPLE_UUID in reason(parsed) else "無")
+
+
+def case_20(sb):
+    """20 | hook 1 | sk- / AKIA / BEGIN をコマンド全文に置く | いずれも deny"""
+    body = sb.write(os.path.join(sb.work, "body.md"), "本文。\n")
+    results = []
+    for word in ("sk-abcd1234efgh", "AKIAABCD1234EFGH", "-----BEGIN PRIVATE KEY"):
+        proc, parsed = run_hook(PRETOOL, bash_payload(
+            "echo '%s' >/dev/null; gh pr create --repo ippoan/claude-skills "
+            "--title t --body-file %s" % (word, body)), sb)
+        results.append((word, decision(parsed)))
+    ok = all(d == "deny" for _, d in results)
+    return ok, " / ".join("%s=%s" % (w.split()[0], d) for w, d in results)
+
+
+def case_21(sb):
+    """21 | hook 1 | 本文は読めるが --label / パイプ前の別コマンドに UUID | deny"""
+    body = sb.write(os.path.join(sb.work, "body.md"), "本文。\n")
+    results = []
+    for command in (
+        "gh pr create --repo ippoan/claude-skills --label %s --body-file %s" % (SAMPLE_UUID, body),
+        "echo device_id=%s | gh pr create --repo ippoan/claude-skills --title t --body-file %s"
+        % (SAMPLE_UUID, body),
+    ):
+        proc, parsed = run_hook(PRETOOL, bash_payload(command), sb)
+        results.append(decision(parsed))
+    ok = all(d == "deny" for d in results)
+    return ok, "--label=%s / パイプ前=%s (本文の外はコマンド全文でしか見えない)" % tuple(results)
+
+
+def case_22(sb):
+    """22 | hook 1 | 本文は読めるが --title に UUID | deny + 全文走査単体でも当たる"""
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    from scan_public_text import scan  # noqa: PLC0415
+    body = sb.write(os.path.join(sb.work, "body.md"), "本文に識別子は無い。\n")
+    command = ("gh pr create --repo ippoan/claude-skills --title 'device %s' --body-file %s"
+               % (SAMPLE_UUID, body))
+    proc, parsed = run_hook(PRETOOL, bash_payload(command), sb)
+    # フラグ側 (TEXT_FLAGS の --title) だけでなく、**コマンド全文の走査単体でも**当たること。
+    # 全文走査を弱めると、ここが最初に落ちる。
+    from_command = [f[2] for f in scan(command, denylist=[])]
+    ok = (decision(parsed) == "deny" and SAMPLE_UUID in reason(parsed)
+          and SAMPLE_UUID in from_command)
+    return ok, "decision=%s / 文言に語=%s / 全文走査単体=%s" % (
+        decision(parsed), "有" if SAMPLE_UUID in reason(parsed) else "無",
+        "当たる" if SAMPLE_UUID in from_command else "当たらない")
+
+
+def case_23(sb):
+    """23 | scan | 除外は「FS の絶対パス」だけ。URL / 相対パス風の UUID は当てる"""
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    from scan_public_text import scan  # noqa: PLC0415
+    # 公開 repo では**ポインタは値と同じ**。URL の形で本番リソース ID を貼れてはいけない。
+    expected = [
+        ("https://admin.example.com/devices/%s/status" % PATH_UUID, True),
+        ("devices/%s/status" % PATH_UUID, True),           # 散文中の相対パス風
+        ("s3://bucket/%s/dump.json" % PATH_UUID, True),
+        ("cp /tmp/claude-1001/%s/scratchpad/pr.md /tmp/b" % PATH_UUID, False),  # 誤爆の実体
+        ("device_id=%s" % PATH_UUID, True),
+        ('SP="/tmp/claude-1001/%s/scratchpad"' % PATH_UUID, False),  # 引用 + 左辺付き
+    ]
+    results = []
+    for text, want_hit in expected:
+        hit = any(f[1] == "uuid" for f in scan(text, denylist=[]))
+        results.append((text, want_hit, hit))
+    ok = all(want == got for _, want, got in results)
+    return ok, " / ".join(
+        "%s%s" % ("OK" if want == got else "NG:", text[:46]) for text, want, got in results)
+
+
+def case_19(sb):
+    """19 | scan | パス内の UUID は当てず、語として立つ UUID と資格情報は当てる"""
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    from scan_public_text import scan  # noqa: PLC0415
+    in_path = scan("SP=/tmp/x/%s/scratchpad\n" % PATH_UUID, denylist=[])
+    standalone = scan("device_id=%s\n" % SAMPLE_UUID, denylist=[])
+    # パスの中でも資格情報は当てる (除外したのは UUID だけ)。
+    cred_in_path = scan("cp /tmp/%s/%s.md /tmp/b\n" % (PATH_UUID, FAKE_TOKEN), denylist=[])
+    ok = (in_path == [] and [f[1] for f in standalone] == ["uuid"]
+          and [f[1] for f in cred_in_path] == ["github-token"])
+    return ok, "パス内 UUID=%r / 単独 UUID=%r / パス内 資格情報=%r" % (
+        [f[1] for f in in_path], [f[1] for f in standalone], [f[1] for f in cred_in_path])
+
+
 # 1〜11 は issue #153 の受け入れ条件そのもの。12〜13 は実装中に見つけた
 # すり抜け (フラグ解析だけに頼ると素通しした) の回帰防止。
+# 14〜23 は issue #157: 作業パスの UUID による誤爆 2 経路 (14/15) と、
+# それを直しても緩めてはいけない 8 点 (16/20 資格情報は全文でも当てる /
+# 17 fail-closed / 18 検出力 / 19 スキャナ単体 / 21・22 本文の外もコマンド全文で見る /
+# 23 除外は FS の絶対パスだけで URL は当てる)。
+# **21・22 が「コマンド全文の走査を弱めるな」、23 が「除外を広げるな」の見張り番**。
 CASES = [case_01, case_02, case_03, case_04, case_05, case_06,
          case_07, case_08, case_09, case_10, case_11,
-         case_12, case_13]
+         case_12, case_13,
+         case_14, case_15, case_16, case_17, case_18, case_19, case_20,
+         case_21, case_22, case_23]
 
 
 def main() -> int:

@@ -1,18 +1,26 @@
 name: knowledge-check
 
-# knowledge/ エントリの規約リンター。decisions/ standards/ の frontmatter・命名・
-# Summary 等を検証し、error が 1 件でもあれば fail (PR をブロック)。warn は exit 0。
-# 規約定義は knowledge/rules.json が SoT、実装は knowledge/scripts/check.py。
+# この repo の python を回す唯一の job。2 つを見る:
+#   1. knowledge/ エントリの規約リンター。decisions/ standards/ の frontmatter・命名・
+#      Summary 等を検証し、error が 1 件でもあれば fail (PR をブロック)。warn は exit 0。
+#      規約定義は knowledge/rules.json が SoT、実装は knowledge/scripts/check.py。
+#   2. public-text-guard の hook テスト。誤爆すれば hook は外され、外れた hook は
+#      何も守らない。だから CI で回す (#157。それまで CI はこの repo の python を
+#      1 行も回していなかった)。
 
 on:
   push:
     branches: [main]
     paths:
       - 'knowledge/**'
+      - 'public-text-guard/**'
+      - '.github/workflows/knowledge-check.yml'
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
       - 'knowledge/**'
+      - 'public-text-guard/**'
+      - '.github/workflows/knowledge-check.yml'
 
 permissions:
   contents: read
@@ -29,5 +37,8 @@ jobs:
         run: python3 knowledge/scripts/check.py
       - name: Unit tests
         run: python3 -m unittest discover -s knowledge/tests -p 'test_*.py'
+      - name: public-text-guard hook tests (blocking)
+        # HOME と gh を差し替えて回すので、runner の state にも GitHub にも触らない。
+        run: python3 public-text-guard/tests/run_tests.py
       - name: SKILL.md lint (warn only, non-blocking)
         run: python3 knowledge/scripts/check.py --skills
