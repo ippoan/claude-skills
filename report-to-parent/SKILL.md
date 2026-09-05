@@ -8,6 +8,18 @@ description: spawn_task で起動されたタスクセッションから、起�
 このセッションが spawn_task チップから起動されたタスクなら、親セッションが複数タスクの
 交通整理 (マージ順・競合調整) をやっている。節目ごとに短い報告を返す。
 
+## 手順 0 — まず自分を名乗る
+
+**最初の実作業より前に、チップと同じタイトルで自分を名乗る:**
+
+```
+set_session_title { session_id: "self", title: "<チップと同じタイトル>" }
+```
+
+hook (`session-role-log.sh`) はこの瞬間しか title を観測できず、**アプリがチップに付けた
+タイトルは hook を通らない**。名乗らないと自分が子だと認識されない (下の「機械的な栓」)。
+同じ文字列への改名は no-op なので害は無い。
+
 ## 親の見つけ方
 
 **親のタイトルは `#p<issue> <短い題>`**、自分 (子) は親と同じ issue の枝なら
@@ -62,6 +74,17 @@ workflow が再発火せず詰まるため)。go の前に指摘や rebase 指�
 
 書式は行頭に `[開始]` `[質問]` `[完了]` を付けるだけ。それ以外の中間実況は送らない —
 親の context を消費し、交通整理に要らない。
+
+## ★ ユーザーに直接質問しない — `[質問]` は親へ
+
+**子は `AskUserQuestion` を使わない。** 判断が親の文脈に依存するなら、親を逆引きして
+`send_message` で `[質問] 詰まった点 / 選択肢 / 自分の推奨` を送る。
+`block-child-asks-user.sh` が child marker のあるセッションの `AskUserQuestion` を
+**deny** する (下の「機械的な栓」)。ユーザーへの割り込みは親 1 か所に集約する
+(オーナー要望 2026-09-05)。
+
+**例外は親が居ない単独セッションだけ** — `~/.claude/state/child-may-ask/<session_id>` を
+作れば解除される (`archive_session` の「例外は親がいないセッションだけ」と同じ扱い)。
 
 ## ★★ 指示に `origin/main` の SHA があったら、動く前に突き合わせる
 
@@ -124,6 +147,111 @@ send_message は相手の処理中 turn が終わってから届き、返信が�
 **例外は「親がいないセッション」だけ** — ユーザーが直接立てた単独セッションや、
 親が既に畳まれて後継もいない場合は、自分で `archive_session { session_id: "self" }`
 を呼んでよい。
+
+## 機械的な栓 (hook) — 親は実装せず、子はユーザーに聞かない
+
+機械的な栓が 4 本ある。**読了チェックは不読を防ぐだけで違反を防げない** — 2026-09-05、
+`#p134` の監督 (親) セッションが自分で migration SQL を書き、postgres を立て、commit しようとして
+ユーザーに止められた。その親は task-split の「**このセッション (親) は実装せず**」を
+**読了して引用まで提出していた** (Refs ippoan/claude-skills#152)。だから口そのものを塞ぐ。
+
+`parent-role/hooks/` の 4 本を `~/.claude/hooks/` へ symlink し、`~/.claude/settings.json` に登録する。
+
+### hook 4 本 (`parent-role/hooks/`)
+
+| hook | matcher | 何をするか | fail-open |
+|---|---|---|---|
+| `session-role-log.sh` | `mcp__ccd_session_mgmt__set_session_title` | `tool_input.session_id == "self"` のときだけ、title から役を判定して marker を立てる。**塞がない** | — (常に素通し) |
+| `block-parent-repo-writes.sh` | `Edit` / `Write` / `NotebookEdit` | parent marker 有 + 書き先の上流に `.git` (**ファイル = worktree / ディレクトリ = main clone のどちらでも**) → **deny** | parent marker が無ければ素通し |
+| `block-parent-commits.sh` | `Bash` | parent marker 有 + `git commit` / `push` / `apply` / `am` / `cherry-pick` → **deny**。`gh pr create` / `gh issue create` / `gh issue comment` / `git branch -D` / `git worktree add`\|`remove`\|`list` / 読み取り系はすべて**許可** | 同上 |
+| `block-child-asks-user.sh` | `AskUserQuestion` | child marker 有 → **deny** (親へ `send_message` の `[質問]` に寄せる) | child marker が無ければ素通し |
+
+**「書き込み全部禁止」にはしていない。** 親は scratchpad に計画を書き、memory を更新し、
+**PR を作り**、マージ後に **branch を掃除する**必要がある。塞ぐのは
+「repo の作業ツリーへの書き込み」と「commit/push」だけ。
+
+### marker の立て方 — title が唯一の判定材料
+
+★ `~/.claude/sessions/*.json` に **title は無い** (2026-09-05 実測。keys は親子で完全同一で、
+「spawn_task で起動された」ことを示す欄も無い)。**title を hook が知れるのは
+`set_session_title` の瞬間だけ**なので、親も子も**手順 0 で自分を名乗る**必要がある。
+
+| title (命名規約は task-split §1) | marker |
+|---|---|
+| `^#p[0-9]+ ` (★ 直後がスペース) | `~/.claude/state/parent-role/<session_id>` を作り、child marker を消す |
+| `#c[0-9]+-` または `#p[0-9]+-c` を含む | `~/.claude/state/child-role/<session_id>` を作り、parent marker を消す |
+| `^\[旧\] #p` | 両方消す (交代した旧親はどちらの役でもない) |
+
+**チップがアプリ側で付けたタイトルは hook を通らない。** だから子の prompt には
+「手順 0 で `set_session_title { session_id: "self", title: "<チップと同じタイトル>" }` を打つ」
+を必ず書く。同じ文字列への改名は no-op なので害は無い。
+**名乗らなかったセッションは marker が立たず素通し** (誤爆より取りこぼしを選ぶ。
+`require-simplify-review.sh` の「session_id が取れない payload も素通し」と同じ方針)。
+
+### escape hatch (どちらも終わったら消す)
+
+| 状況 | 作るファイル |
+|---|---|
+| 親がどうしても repo を直接書く / commit する | `~/.claude/state/parent-role/<session_id>.override` |
+| 親が居ない単独セッションでユーザーに聞きたい | `~/.claude/state/child-may-ask/<session_id>` |
+
+### サブエージェント経由は「穴」ではなく逃げ道 (オーナー判断 2026-09-05)
+
+hook は `session_id` を鍵にするので、**Agent tool のサブエージェントは別 session で走り
+親の marker を持たない** → B/C を素通しする。**これは塞がない。** 親が「書きたいもの」を
+抱えたときの正しい形が background の `Agent` だから — **親の turn が空くのでユーザーの指示に
+常に応答できる**。`task-surveyor` / `child-auditor` / `simplify-reviewer` はいずれも read-only で、
+marker を伝播させると**調査すらできなくなる**。**deliberate と accidental を分けるのが hook の役目。**
+
+⇒ deny されたときの行き先は 3 つ (deny の文言にも書いてある):
+
+- **repo の変更 (PR になるもの)** → `spawn_task` でチップにする (worktree・branch・CI が付く)
+- **repo 外の成果物 (計画・PR 本文・issue 本文・memory)** → そのまま書ける
+- **調査・裏取り** → `Agent` を **`run_in_background: true`** で (親の turn を止めない)
+
+### 限界 (承知の上で入れている)
+
+- **Bash の `sed -i` / `cat > file` は取りこぼす** (`block-main-clone-writes.sh` と同じ)。
+  ただし `block-parent-commits.sh` が commit/push を止めるので、成果物として repo の外へは出ない
+- **permission プロンプトは hook で消せない。** ツール承認・`archive_session` の確認は設計上
+  ユーザーに出る。「子からの割り込み」を 0 にはできない
+- **敵対的な回避を防ぐ機能ではない** (marker は自己申告)。塞ぐ対象は
+  「**うっかり inline で書き始める**」経路
+- 既存の `block-main-clone-writes.sh` は **worktree を許可**するので 2026-09-05 の事故を
+  止められなかった (親が自分で worktree を作った)。**目的が違うので消さないこと** —
+  あちらは「main clone は誰も書かない」、`block-parent-repo-writes.sh` は「親は repo を書かない」
+- 子の判定に **cwd (worktree に居る = 子) は使っていない** (オーナー判断 2026-09-05)。
+  ユーザーが自分で worktree に開いたセッションまで `AskUserQuestion` を失うため。
+  **タイトルに `c` が入るのが子**なので陽性判定で足りる
+
+### インストール (★ この repo は hook を**置くだけ**。symlink と登録は親かユーザーが打つ)
+
+```bash
+ln -sfn <claude-skills>/parent-role/hooks/session-role-log.sh         ~/.claude/hooks/session-role-log.sh
+ln -sfn <claude-skills>/parent-role/hooks/block-parent-repo-writes.sh ~/.claude/hooks/block-parent-repo-writes.sh
+ln -sfn <claude-skills>/parent-role/hooks/block-parent-commits.sh     ~/.claude/hooks/block-parent-commits.sh
+ln -sfn <claude-skills>/parent-role/hooks/block-child-asks-user.sh    ~/.claude/hooks/block-child-asks-user.sh
+```
+
+`~/.claude/settings.json` の `PreToolUse` 配列に足す (既に `PreToolUse` があれば配列へ追記):
+
+```json
+"PreToolUse": [
+  { "matcher": "mcp__ccd_session_mgmt__set_session_title",
+    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/session-role-log.sh", "timeout": 10 }] },
+  { "matcher": "Edit|Write|NotebookEdit",
+    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-parent-repo-writes.sh", "timeout": 10,
+                "statusMessage": "親セッションの repo 書き込みか確認中" }] },
+  { "matcher": "Bash",
+    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-parent-commits.sh", "timeout": 10,
+                "statusMessage": "親セッションの commit/push か確認中" }] },
+  { "matcher": "AskUserQuestion",
+    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-child-asks-user.sh", "timeout": 10 }] }
+]
+```
+
+受け入れテスト: `bash <claude-skills>/parent-role/hooks/test-parent-role-hooks.sh`
+(`HOME` を一時ディレクトリへ差し替えて回すので、実物の `~/.claude/state/` は汚さない)。
 
 ## なぜ報告するか
 
