@@ -9,8 +9,11 @@ CLI:
     出力: `行番号:種別:語` を 1 行 1 件。当たりがあれば exit 1、無ければ exit 0。
 
 方針は「取りこぼしより誤爆を嫌う」。誤爆する検査は使われなくなり、使われない検査は
-何も守らないため。git SHA・プレースホルダ・英単語・**パス様トークンの中の UUID** は
+何も守らないため。git SHA・プレースホルダ・英単語・**FS の絶対パスの中の UUID** は
 当てない (`_is_device_credential` / `_is_placeholder_uuid` / `_is_path_uuid` を参照)。
+
+ただし除外は必要最小限に留める。**公開 repo ではポインタは値と同じ**なので、
+`https://…/devices/<UUID>/…` のような URL 中の識別子は当て続ける (`_is_path_uuid` を参照)。
 
 内部ホスト名のような **repo に書けない語** はここに書かず、
 `~/.claude/state/public-text-guard/denylist` (1 行 1 語) から読む。
@@ -52,6 +55,13 @@ TOKENISH_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{20,24}(?![A-Za-z0-9_-
 
 HEX_ONLY_RE = re.compile(r"[0-9a-fA-F]+\Z")
 
+# _is_path_uuid 用。「ファイルシステムのパスの始まり」だけを認める。
+# 散文中の `devices/<UUID>/status` のような相対パス風は**含めない** (当てたいので)。
+FS_PATH_START_RE = re.compile(r"\A(?:/|~/|\./|\.\./|[A-Za-z]:[\\/])")
+# `SP=/tmp/…` `--body-file=/tmp/…` の左辺。パスの一部ではないので剥がす。
+ASSIGNMENT_PREFIX_RE = re.compile(r"\A[-A-Za-z0-9_]+=")
+_QUOTE_CHARS = "\"'`"
+
 
 def _is_placeholder_uuid(match: str) -> bool:
     """`00000000-0000-0000-0000-000000000000` のような見本を除外する。
@@ -62,20 +72,34 @@ def _is_placeholder_uuid(match: str) -> bool:
 
 
 def _is_path_uuid(line: str, span: tuple[int, int]) -> bool:
-    """`/tmp/…/<UUID>/scratchpad` のような**パスの中の** UUID を除外する。
+    """`/tmp/…/<UUID>/scratchpad` のような**ファイルシステムのパスの中の** UUID を除外する。
 
-    空白で区切った語に `/` が在れば、それは公開される値ではなく作業パス。
-    公開文に載る UUID は `device_id=…` のように語として立つ。
+    誤爆の実体は「作業ディレクトリの**絶対パス**に UUID が入る」ことなので、
+    除外は 2 条件の AND に絞る:
 
-    コマンド全文を走査する以上ここは必ず視界へ入り、実運用の 1 本目で
-    2 回続けて誤爆した (#157)。誤爆する検査は外され、外れた検査は何も守らない。
+      1. 語が `/` `~/` `./` `../` かドライブレター (`C:\\`) で始まる
+      2. 語に `://` を含まない
+
+    **`/` を含むだけでは除外しない。** この guard が守っている線は
+    「公開 repo ではポインタは値と同じ」なので、`https://…/devices/<UUID>/status` や
+    `s3://bucket/<UUID>/…` は**まさに止めたい形**。散文中の `devices/<UUID>/status` も同じ。
+
+    先頭の引用符と `SP=` / `--body-file=` のような接頭辞は、パスの一部ではないので剥がす
+    (`SP=/tmp/…/<UUID>/…` が #157 の誤爆そのものの形)。
     """
     start, end = span
     while start > 0 and not line[start - 1].isspace():
         start -= 1
     while end < len(line) and not line[end].isspace():
         end += 1
-    return "/" in line[start:end]
+    word = line[start:end]
+    if "://" in word:
+        return False
+    word = word.lstrip(_QUOTE_CHARS)
+    prefix = ASSIGNMENT_PREFIX_RE.match(word)
+    if prefix:
+        word = word[prefix.end():].lstrip(_QUOTE_CHARS)
+    return bool(FS_PATH_START_RE.match(word))
 
 
 def _is_device_credential(token: str) -> bool:

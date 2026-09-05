@@ -355,6 +355,28 @@ def case_22(sb):
         "当たる" if SAMPLE_UUID in from_command else "当たらない")
 
 
+def case_23(sb):
+    """23 | scan | 除外は「FS の絶対パス」だけ。URL / 相対パス風の UUID は当てる"""
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    from scan_public_text import scan  # noqa: PLC0415
+    # 公開 repo では**ポインタは値と同じ**。URL の形で本番リソース ID を貼れてはいけない。
+    expected = [
+        ("https://admin.example.com/devices/%s/status" % PATH_UUID, True),
+        ("devices/%s/status" % PATH_UUID, True),           # 散文中の相対パス風
+        ("s3://bucket/%s/dump.json" % PATH_UUID, True),
+        ("cp /tmp/claude-1001/%s/scratchpad/pr.md /tmp/b" % PATH_UUID, False),  # 誤爆の実体
+        ("device_id=%s" % PATH_UUID, True),
+        ('SP="/tmp/claude-1001/%s/scratchpad"' % PATH_UUID, False),  # 引用 + 左辺付き
+    ]
+    results = []
+    for text, want_hit in expected:
+        hit = any(f[1] == "uuid" for f in scan(text, denylist=[]))
+        results.append((text, want_hit, hit))
+    ok = all(want == got for _, want, got in results)
+    return ok, " / ".join(
+        "%s%s" % ("OK" if want == got else "NG:", text[:46]) for text, want, got in results)
+
+
 def case_19(sb):
     """19 | scan | パス内の UUID は当てず、語として立つ UUID と資格情報は当てる"""
     sys.path.insert(0, os.path.join(ROOT, "scripts"))
@@ -371,16 +393,16 @@ def case_19(sb):
 
 # 1〜11 は issue #153 の受け入れ条件そのもの。12〜13 は実装中に見つけた
 # すり抜け (フラグ解析だけに頼ると素通しした) の回帰防止。
-# 14〜22 は issue #157: 作業パスの UUID による誤爆 2 経路 (14/15) と、
-# それを直しても緩めてはいけない 7 点 (16/20 資格情報は全文でも当てる /
-# 17 fail-closed / 18 検出力 / 19 スキャナ単体 / 21・22 本文の外もコマンド全文で見る)。
-# **21・22 が「コマンド全文の走査を弱めるな」の見張り番**。誤爆を直すときは
-# 走査範囲ではなく当て方 (_is_path_uuid) を触ること。
+# 14〜23 は issue #157: 作業パスの UUID による誤爆 2 経路 (14/15) と、
+# それを直しても緩めてはいけない 8 点 (16/20 資格情報は全文でも当てる /
+# 17 fail-closed / 18 検出力 / 19 スキャナ単体 / 21・22 本文の外もコマンド全文で見る /
+# 23 除外は FS の絶対パスだけで URL は当てる)。
+# **21・22 が「コマンド全文の走査を弱めるな」、23 が「除外を広げるな」の見張り番**。
 CASES = [case_01, case_02, case_03, case_04, case_05, case_06,
          case_07, case_08, case_09, case_10, case_11,
          case_12, case_13,
          case_14, case_15, case_16, case_17, case_18, case_19, case_20,
-         case_21, case_22]
+         case_21, case_22, case_23]
 
 
 def main() -> int:
