@@ -501,6 +501,25 @@ CPU は「いま動いている」の**陽性証拠**にしかならず、0 を�
   親が archive して中断させた)。**打つ前に `list_sessions` の `lastActivityAt` /
   `isRunning` で活動停止を確認する。** これが「状況確認」の中身であって、
   **子やユーザーに「畳んでよいか」と聞くことではない。**
+- **★ アプリが親の `archive_session` を拒否したとき** (実害 2026-09-06、
+  ippoan/alc-app-s3#134 の #p134 第 8 世代)。ユーザーが子のタブを開いていると、
+  基準 3 点と活動停止を確認済みでも、アプリが
+  「was not archived: the app is keeping it for the user (pinned or in use). Wait or
+  ask the user; they can also archive it from the sidebar.」で拒否する。この文言が
+  返ったら:
+  1. **親の再試行は 1 回まで**。同じ拒否が 2 回続いたら打ち続けない
+  2. ユーザーに 3 択を提示する — 子のタブを閉じる / サイドバーから archive する /
+     子に self-archive させる
+  3. ユーザーが「子に archive させろ」と言ったら、親は子へ `send_message` で
+     **`[決定] ユーザー指示で self-archive`** を送る。文面に
+     「`archive_session { session_id: "self" }` を呼ぶ。『畳みます』と書くだけでは
+     畳まれない」を含める (子が返信だけして畳まない事故を防ぐ)
+
+  この経路を通ってよいのは、**親が事前に基準 3 点 (PR MERGED / 掃除済み / 申し送り無し)
+  と `list_sessions` の活動停止を確認済み**で、かつ**ユーザーが直接指示した**ときだけ。
+  拒否が面倒だからと最初から子に畳ませるのは上の ★★ の違反。
+  子側の [[report-to-parent]] にも同じ例外 (親から `[決定] ユーザー指示で self-archive`
+  が届いたら self-archive してよい) を書いた — **片方だけ直さないこと**。
 - **監督役を引き継ぐときは、未 archive の子ごと引き渡す。** archive は親の責務なので、
   畳んでいない子を残したまま親が代わると責務が宙に浮く。引き継ぎ prompt に
   「子セッション台帳」(誰が居て・どの状態で・親が何をするか) を書くこと
