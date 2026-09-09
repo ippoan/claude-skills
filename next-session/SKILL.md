@@ -152,8 +152,8 @@ CCoW では **GitHub issue が唯一機能する引き継ぎ手段**。handoff.m
 
 **★ 「self-archive します」と書くのと、実際に畳むのは別。**
 `mcp__ccd_session_mgmt__archive_session { session_id: "self" }` を**呼ぶ**こと
-(`"self"` は自セッションでも拒否されない唯一の口で、必ずユーザーの確認ダイアログが
-出る)。**子が「archive します」と報告してきても畳んだと思わず、`list_sessions
+(`"self"` は自セッションでも拒否されない唯一の口。確認ダイアログは auto mode では
+出ないことがある — tool 定義。Refs ippoan/claude-skills#160)。**子が「archive します」と報告してきても畳んだと思わず、`list_sessions
 { include_archived: true }` の `isArchived` で確認する。**
 
 ### 宛先は必ずタイトル逆引き — sessionId を prompt に埋めない
