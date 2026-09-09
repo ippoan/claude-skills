@@ -218,6 +218,36 @@ check 50 E 'PostToolUseFailure 形 self の拒否 → 「再試行しない」+ 
 check 51 E 'PostToolUseFailure 形 self は証跡を作らない' none \
   "$( [ -e "${HOME}/.claude/state/archive-refused/${SID}-self" ] && echo made || echo none)"
 
+# [決定] の 4 項目 + 手順 5 (子が辞退したときの 2 通目) — Refs ippoan/claude-skills#165
+reset_markers
+outr1=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
+outr2=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
+check 52 E '2 回目の文面 (1): 例外 (b) の条文を原文どおり貼れと書く' yes \
+  "$(has "$outr2" '例外 (b) の条文')"
+check 53 E '2 回目の文面 (1): 「(b) の受け方」も貼れと書く' yes \
+  "$(has "$outr2" '「(b) の受け方」を原文どおり貼る')"
+check 54 E '2 回目の文面 (2): 起動 prompt の禁止文を親の役として解除' yes \
+  "$(has "$outr2" '親の役としてこの 1 件について解除する')"
+check 55 E '2 回目の文面 (3): 同じ条件の子に同じ手順' yes \
+  "$(has "$outr2" '同じ条件の子に同じ手順')"
+check 56 E '2 回目の文面 (3): 条件 4 点 (PR MERGED)' yes "$(has "$outr2" 'PR MERGED')"
+check 57 E '2 回目の文面 (3): 条件 4 点 (親の archive がアプリに拒否)' yes \
+  "$(has "$outr2" '親の archive がアプリに拒否')"
+check 58 E '2 回目の文面 (4): 権限ロンダリングとの区別' yes \
+  "$(has "$outr2" '権限ロンダリングとの区別')"
+check 59 E '2 回目の文面 (4): 権限ではなく UI 状態' yes "$(has "$outr2" '権限ではなく UI 状態')"
+check 60 E '2 回目の文面 (4): self は子に元から在る操作' yes \
+  "$(has "$outr2" '子に元から在る操作')"
+check 61 E '2 回目の文面 (4): 代行ではなく例外 (b) の設計そのもの' yes \
+  "$(has "$outr2" '代行ではなく例外 (b) の設計そのもの')"
+check 62 E '2 回目の文面 手順 5: 辞退されたら 4 点入りの 2 通目' yes \
+  "$(has "$outr2" '2 通目を送る')"
+check 63 E '2 回目の文面 手順 5: 3 通目は送らない' yes "$(has "$outr2" '3 通目は送らない')"
+check 64 E '2 回目の文面 手順 5: ユーザーに「タブを閉じて」と頼み直さない' yes \
+  "$(has "$outr2" 'と頼み直さない')"
+check 65 E '1 回目の文面には 2 通目の話を出さない (再試行 1 回が先)' no \
+  "$(has "$outr1" '3 通目は送らない')"
+
 echo
 echo "--- 実物の ~/.claude/state を汚していないことの確認 (HOME=$HOME) ---"
 find "${HOME}/.claude/state" -mindepth 1 | sed "s|^${HOME}|\$HOME|" | sort
