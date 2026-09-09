@@ -212,7 +212,7 @@ send_message は相手の処理中 turn が終わってから届き、返信が�
 | `block-parent-repo-writes.sh` | PreToolUse `Edit` / `Write` / `NotebookEdit` | parent marker 有 + 書き先の上流に `.git` (**ファイル = worktree / ディレクトリ = main clone のどちらでも**) → **deny** | parent marker が無ければ素通し |
 | `block-parent-commits.sh` | PreToolUse `Bash` | parent marker 有 + `git commit` / `push` / `apply` / `am` / `cherry-pick` → **deny**。`gh pr create` / `gh issue create` / `gh issue comment` / `git branch -D` / `git worktree add`\|`remove`\|`list` / 読み取り系はすべて**許可** | 同上 |
 | `block-child-asks-user.sh` | PreToolUse `AskUserQuestion` | child marker 有 → **deny** (親へ `send_message` の `[質問]` に寄せる) | child marker が無ければ素通し |
-| `warn-archive-refused.sh` | **PostToolUse** `mcp__ccd_session_mgmt__archive_session` | 応答が「was not archived … pinned or in use」のとき、回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」、2 回目以降は「3 択を 1 行で知らせる → ユーザーの原文を貼った `[決定]` を子へ送る → 待たずに続行」** (task-split §6 の手順そのもの) を出す。対象が `self` なら「再試行しない。サイドバーかタブを閉じてもらう」。**塞がない** (exit 2 で文面を返すだけ) | 拒否文言でなければ素通し |
+| `warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗なので `PostToolUseFailure` でしか届かない — Refs ippoan/claude-skills#163) | payload 全体 (JSON 文字列) が「was not archived … pinned or in use」のとき、回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」、2 回目以降は「3 択を 1 行で知らせる → ユーザーの原文を貼った `[決定]` を子へ送る → 待たずに続行」** (task-split §6 の手順そのもの) を出す。対象が `self` なら「再試行しない。サイドバーかタブを閉じてもらう」。**塞がない** (exit 2 で文面を返すだけ) | 拒否文言でなければ素通し |
 
 **「書き込み全部禁止」にはしていない。** 親は scratchpad に計画を書き、memory を更新し、
 **PR を作り**、マージ後に **branch を掃除する**必要がある。塞ぐのは
@@ -283,6 +283,10 @@ ln -sfn <claude-skills>/parent-role/hooks/block-child-asks-user.sh    ~/.claude/
 ln -sfn <claude-skills>/parent-role/hooks/warn-archive-refused.sh     ~/.claude/hooks/warn-archive-refused.sh
 ```
 
+**★ `ls -la ~/.claude/hooks/` で 5 本が symlink (`->`) であることを確かめる。** 実ファイルのコピーに
+なっていたら上の `ln -sfn` で symlink に戻す (2026-09-09、`warn-archive-refused.sh` が古いコピーのまま
+残り、repo の最新 (#160 の文面) と食い違っていた — Refs ippoan/claude-skills#163)。
+
 `~/.claude/settings.json` の `PreToolUse` 配列に足す (既に `PreToolUse` があれば配列へ追記):
 
 ```json
@@ -300,10 +304,13 @@ ln -sfn <claude-skills>/parent-role/hooks/warn-archive-refused.sh     ~/.claude/
 ]
 ```
 
-`warn-archive-refused.sh` だけは応答を見るので **`PostToolUse`** に登録する:
+`warn-archive-refused.sh` だけは応答を見るので **`PostToolUseFailure`** に登録する
+(`PostToolUse` は**成功時のみ**発火し、archive の拒否は MCP ツールの失敗として返るため
+`PostToolUse` 登録では永久に鳴らない — 2026-09-09 の拒否 6 回で 0 回。Refs ippoan/claude-skills#163。
+成功時の `PostToolUse` 登録が残っていても害は無い — 成功応答は拒否文言を含まず素通し):
 
 ```json
-"PostToolUse": [
+"PostToolUseFailure": [
   { "matcher": "mcp__ccd_session_mgmt__archive_session",
     "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/warn-archive-refused.sh", "timeout": 10,
                 "statusMessage": "archive の拒否を確認中" }] }
