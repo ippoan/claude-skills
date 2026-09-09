@@ -35,7 +35,7 @@ mk_mayask()  { mkdir -p "${HOME}/.claude/state/child-may-ask";: > "${HOME}/.clau
 
 # run <hook> <payload json> → stdout を返す
 run() { printf '%s' "$2" | bash "$1" 2>/dev/null; }
-# run_err <hook> <payload json> → stderr を返す (PostToolUse hook は stderr で文面を返す)
+# run_err <hook> <payload json> → stderr を返す (PostToolUse / PostToolUseFailure hook は stderr で文面を返す)
 run_err() { printf '%s' "$2" | { bash "$1" 2>&1 1>&3 3>&-; } 3>&1; }
 # run_rc <hook> <payload json> → exit code を返す
 run_rc() { printf '%s' "$2" | bash "$1" >/dev/null 2>&1; echo $?; }
@@ -75,6 +75,10 @@ ask_payload()  { jq -nc --arg s "$1" '{session_id:$s,tool_name:"AskUserQuestion"
 archive_payload() { # <session_id> <tool_input.session_id> <tool_response (文字列)>
   jq -nc --arg s "$1" --arg t "$2" --arg r "$3" \
     '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__archive_session",tool_input:{session_id:$t,reason:"PR merged"},tool_response:$r}'
+}
+archive_failure_payload() { # PostToolUseFailure 形: tool_response 無し、error キーに失敗文言
+  jq -nc --arg s "$1" --arg t "$2" --arg r "$3" \
+    '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__archive_session",tool_input:{session_id:$t,reason:"PR merged"},error:$r}'
 }
 archive_payload_blocks() { # tool_response が content block 配列で来る形
   jq -nc --arg s "$1" --arg t "$2" --arg r "$3" \
@@ -172,7 +176,7 @@ run "$A" "$(title_payload "$SID" self '#p134 NFC タイムカード端末の監�
 check 27 A '親を名乗り直すと child marker は消える' parent "$(state_of "$SID")"
 
 echo
-echo "=== E. warn-archive-refused.sh (PostToolUse。拒否の瞬間に §6 の次の一手を出す) ==="
+echo "=== E. warn-archive-refused.sh (PostToolUseFailure。拒否の瞬間に §6 の次の一手を出す) ==="
 reset_markers
 check 28 E '成功応答 → 黙って素通し (exit 0)' 0 "$(run_rc "$E" "$(archive_payload "$SID" local_child_1 "$OK_RESP")")"
 check 29 E '「still working」の拒否 → 素通し (pinned の話ではない)' 0 "$(run_rc "$E" "$(archive_payload "$SID" local_child_1 "$BUSY")")"
@@ -201,6 +205,18 @@ check 44 E 'self の拒否 → 親へ送る話にしない' yes "$(has "$outs" '
 check 45 E 'self の拒否は証跡を作らない (再試行の回数を数える対象ではない)' none \
   "$( [ -e "${HOME}/.claude/state/archive-refused/${SID}-self" ] && echo made || echo none)"
 check 46 E 'tool_response 無し → 素通し' 0 "$(run_rc "$E" "$(jq -nc --arg s "$SID" '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__archive_session",tool_input:{session_id:"x"}}')")"
+# PostToolUseFailure 形 (tool_response 無し、error キーに拒否文言) — Refs #163
+reset_markers
+outf1=$(run_err "$E" "$(archive_failure_payload "$SID" local_child_1 "$REFUSED")")
+check 47 E 'PostToolUseFailure 形 (error キー) 1 回目: 「再試行は 1 回まで」' yes "$(has "$outf1" '再試行は 1 回まで')"
+outf2=$(run_err "$E" "$(archive_failure_payload "$SID" local_child_1 "$REFUSED")")
+check 48 E 'PostToolUseFailure 形 (error キー) 2 回目: 3 択 (サイドバーから archive)' yes "$(has "$outf2" 'サイドバーから archive')"
+check 49 E 'PostToolUseFailure 形: 証跡 = 2' 2 "$(cat "${HOME}/.claude/state/archive-refused/${SID}-local_child_1" 2>/dev/null)"
+reset_markers
+outfs=$(run_err "$E" "$(archive_failure_payload "$SID" self "$REFUSED")")
+check 50 E 'PostToolUseFailure 形 self の拒否 → 「再試行しない」+ 親へ送る話にしない' yes "$(has "$outfs" '親へ送る話でも')"
+check 51 E 'PostToolUseFailure 形 self は証跡を作らない' none \
+  "$( [ -e "${HOME}/.claude/state/archive-refused/${SID}-self" ] && echo made || echo none)"
 
 echo
 echo "--- 実物の ~/.claude/state を汚していないことの確認 (HOME=$HOME) ---"

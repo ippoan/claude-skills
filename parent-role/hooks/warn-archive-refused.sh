@@ -1,5 +1,12 @@
 #!/bin/bash
-# PostToolUse / matcher: mcp__ccd_session_mgmt__archive_session
+# PostToolUseFailure / matcher: mcp__ccd_session_mgmt__archive_session
+#
+# ★ PostToolUse ではなく PostToolUseFailure に登録する (Refs ippoan/claude-skills#163)。
+#   PostToolUse は**成功時のみ**発火し、archive の拒否は MCP ツールの失敗として返るので
+#   別イベント PostToolUseFailure でしか届かない (2026-09-09 の拒否 6 回で一度も鳴らなかった)。
+#   失敗文言がどのキー (tool_response / error / tool_error) に入るかは公式に明記が無いので、
+#   payload 全体の JSON 文字列に対して拒否文言を照合し、key 名に依存しない。
+#   成功時の PostToolUse 登録が残っていても害は無い (成功応答は拒否文言を含まず素通し)。
 #
 # 親の archive_session がアプリに「was not archived: the app is keeping it for the user
 # (pinned or in use)」で拒否された瞬間に、task-split §6 の次の一手を機械的に出す。
@@ -25,7 +32,8 @@ command -v jq >/dev/null 2>&1 || exit 0
 payload=$(cat 2>/dev/null || true)
 [ -n "$payload" ] || exit 0
 
-resp=$(printf '%s' "$payload" | jq -r '(.tool_response // empty) | if type=="string" then . else tojson end' 2>/dev/null || true)
+# 照合対象は payload 全体 (jq -c . の 1 行 JSON。壊れた JSON なら生の payload)
+resp=$(printf '%s' "$payload" | jq -c . 2>/dev/null || printf '%s' "$payload")
 [ -n "$resp" ] || exit 0
 
 # 「アプリが抱えている」拒否だけを拾う。成功・他のエラーは素通し
