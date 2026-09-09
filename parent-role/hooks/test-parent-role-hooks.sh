@@ -10,6 +10,8 @@ A="${HERE}/session-role-log.sh"
 B="${HERE}/block-parent-repo-writes.sh"
 C="${HERE}/block-parent-commits.sh"
 D="${HERE}/block-child-asks-user.sh"
+E="${HERE}/warn-archive-refused.sh"
+F="${HERE}/block-archive-relay.sh"
 
 SANDBOX=$(mktemp -d /tmp/parent-role-hooks-test.XXXXXX)
 trap 'rm -rf "$SANDBOX"' EXIT
@@ -26,7 +28,7 @@ SID="local_self_1"
 
 reset_markers() {
   rm -rf "${HOME}/.claude/state/parent-role" "${HOME}/.claude/state/child-role" \
-         "${HOME}/.claude/state/child-may-ask" 2>/dev/null
+         "${HOME}/.claude/state/child-may-ask" "${HOME}/.claude/state/archive-refused" 2>/dev/null
 }
 mk_parent()  { mkdir -p "${HOME}/.claude/state/parent-role";  : > "${HOME}/.claude/state/parent-role/$1"; }
 mk_child()   { mkdir -p "${HOME}/.claude/state/child-role";   : > "${HOME}/.claude/state/child-role/$1"; }
@@ -34,11 +36,17 @@ mk_mayask()  { mkdir -p "${HOME}/.claude/state/child-may-ask";: > "${HOME}/.clau
 
 # run <hook> <payload json> → stdout を返す
 run() { printf '%s' "$2" | bash "$1" 2>/dev/null; }
+# run_err <hook> <payload json> → stderr を返す (PostToolUse hook は stderr で文面を返す)
+run_err() { printf '%s' "$2" | { bash "$1" 2>&1 1>&3 3>&-; } 3>&1; }
+# run_rc <hook> <payload json> → exit code を返す
+run_rc() { printf '%s' "$2" | bash "$1" >/dev/null 2>&1; echo $?; }
 
 # decision <stdout> → "deny" | "allow"
 decision() {
   if printf '%s' "$1" | grep -q '"permissionDecision":"deny"'; then echo deny; else echo allow; fi
 }
+# has <text> <needle> → "yes" | "no"
+has() { if printf '%s' "$1" | grep -qF -- "$2"; then echo yes; else echo no; fi; }
 
 check() { # check <#> <hook> <説明> <期待> <実際>
   if [ "$4" = "$5" ]; then
@@ -65,6 +73,19 @@ title_payload() { # <session_id そのもの> <tool_input.session_id> <title>
 file_payload() { jq -nc --arg s "$1" --arg f "$2" '{session_id:$s,tool_name:"Write",tool_input:{file_path:$f,content:"x"}}'; }
 bash_payload() { jq -nc --arg s "$1" --arg c "$2" '{session_id:$s,tool_name:"Bash",tool_input:{command:$c}}'; }
 ask_payload()  { jq -nc --arg s "$1" '{session_id:$s,tool_name:"AskUserQuestion",tool_input:{questions:[]}}'; }
+archive_payload() { # <session_id> <tool_input.session_id> <tool_response (文字列)>
+  jq -nc --arg s "$1" --arg t "$2" --arg r "$3" \
+    '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__archive_session",tool_input:{session_id:$t,reason:"PR merged"},tool_response:$r}'
+}
+archive_payload_blocks() { # tool_response が content block 配列で来る形
+  jq -nc --arg s "$1" --arg t "$2" --arg r "$3" \
+    '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__archive_session",tool_input:{session_id:$t},tool_response:[{type:"text",text:$r}]}'
+}
+msg_payload() { jq -nc --arg s "$1" --arg m "$2" '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__send_message",tool_input:{session_id:"local_child_1",message:$m}}'; }
+
+REFUSED='Session local_child_1 was not archived: the app is keeping it for the user (pinned or in use). Wait or ask the user; they can also archive it from the sidebar.'
+BUSY='Session local_child_1 was not archived: it is still working (mid-turn).'
+OK_RESP='Archived session local_child_1.'
 
 echo "=== A. session-role-log.sh (証跡を立てる。常に素通し) ==="
 reset_markers
@@ -151,6 +172,58 @@ check 26 A '[旧] は parent としても child としても立たない' none "
 reset_markers; mk_child "$SID"
 run "$A" "$(title_payload "$SID" self '#p134 NFC タイムカード端末の監督')" >/dev/null
 check 27 A '親を名乗り直すと child marker は消える' parent "$(state_of "$SID")"
+
+echo
+echo "=== E. warn-archive-refused.sh (PostToolUse。拒否の瞬間に §6 の次の一手を出す) ==="
+reset_markers
+check 28 E '成功応答 → 黙って素通し (exit 0)' 0 "$(run_rc "$E" "$(archive_payload "$SID" local_child_1 "$OK_RESP")")"
+check 29 E '「still working」の拒否 → 素通し (pinned の話ではない)' 0 "$(run_rc "$E" "$(archive_payload "$SID" local_child_1 "$BUSY")")"
+check 30 E 'pinned 拒否 → exit 2 で文面を返す' 2 "$(run_rc "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")"
+# ↑ で 1 回数えたので、証跡を作り直して 1 回目・2 回目を順に見る
+reset_markers
+out1=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
+check 31 E '1 回目の文面: 「再試行は 1 回まで」を含む' yes "$(has "$out1" '再試行は 1 回まで')"
+check 32 E '1 回目の文面: 3 択はまだ出さない' no "$(has "$out1" 'サイドバー')"
+out2=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
+check 33 E '2 回目の文面: 「もう再試行しない」を含む' yes "$(has "$out2" 'もう再試行しない')"
+check 34 E '2 回目の文面: 3 択 (タブを閉じる)' yes "$(has "$out2" 'タブを閉じる')"
+check 35 E '2 回目の文面: 3 択 (サイドバーから archive)' yes "$(has "$out2" 'サイドバーから archive')"
+check 36 E '2 回目の文面: 3 択 (子のタブに直接「畳んで」)' yes "$(has "$out2" '直接「畳んで」')"
+check 37 E '2 回目の文面: 待たずに続行 + 次の turn で list_sessions' yes "$(has "$out2" '次の turn の頭で list_sessions')"
+check 38 E '2 回目の文面: 子への [決定] 中継を**送らない**と書く' yes "$(has "$out2" '送らない')"
+check 39 E '2 回目の文面: 中継の手順 (子が archive_session を呼ぶ) を出さない' no "$(has "$out2" 'session_id: "self" } を呼ぶ')"
+check 40 E '証跡: ~/.claude/state/archive-refused/<sid>-<target> = 2' 2 "$(cat "${HOME}/.claude/state/archive-refused/${SID}-local_child_1" 2>/dev/null)"
+out3=$(run_err "$E" "$(archive_payload_blocks "$SID" local_child_1 "$REFUSED")")
+check 41 E 'tool_response が content block 配列でも拾う (3 回目)' yes "$(has "$out3" '3 回目')"
+reset_markers
+outs=$(run_err "$E" "$(archive_payload "$SID" self "$REFUSED")")
+check 42 E 'self の拒否 → 「再試行しない」+ サイドバー / タブを閉じる' yes "$(has "$outs" 'サイドバーから archive')"
+check 43 E 'self の拒否 → 親へ送る話にしない' yes "$(has "$outs" '親へ送る話でも')"
+check 44 E 'self の拒否は証跡を作らない (再試行の回数を数える対象ではない)' none \
+  "$( [ -e "${HOME}/.claude/state/archive-refused/${SID}-self" ] && echo made || echo none)"
+check 45 E 'tool_response 無し → 素通し' 0 "$(run_rc "$E" "$(jq -nc --arg s "$SID" '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__archive_session",tool_input:{session_id:"x"}}')")"
+
+echo
+echo "=== F. block-archive-relay.sh (PreToolUse send_message。self-archive の中継を塞ぐ) ==="
+reset_markers
+check 46 F '[決定] ユーザー指示で self-archive → deny' deny \
+  "$(decision "$(run "$F" "$(msg_payload "$SID" '[決定] ユーザー指示で self-archive。archive_session { session_id: "self" } を呼ぶこと')")")"
+check 47 F '「ユーザー指示」+ archive_session (タグ無し) → deny' deny \
+  "$(decision "$(run "$F" "$(msg_payload "$SID" 'ユーザー指示です。archive_session を self で呼んで畳んでください')")")"
+check 48 F '[決定] + 「自分で畳んで」 → deny' deny \
+  "$(decision "$(run "$F" "$(msg_payload "$SID" '[決定] 自分で畳んでください')")")"
+check 49 F '[決定] だけ (archive の語なし) → allow' allow \
+  "$(decision "$(run "$F" "$(msg_payload "$SID" '[決定] マージ順は c135-1 → c135-2。rebase してから push')")")"
+check 50 F '[質問] への回答 (archive の語なし) → allow' allow \
+  "$(decision "$(run "$F" "$(msg_payload "$SID" '[回答] B 案で進めてください')")")"
+check 51 F 'archive の語はあるが [決定] / ユーザー指示が無い → allow' allow \
+  "$(decision "$(run "$F" "$(msg_payload "$SID" 'archive は親が打ちます。self-archive はしないでください')")")"
+check 52 F 'marker が無くても本文で判定する (誰が送っても誤り)' deny \
+  "$(decision "$(run "$F" "$(msg_payload "local_other" '[決定] ユーザー指示で self-archive')")")"
+check 53 F 'message が無い payload → 素通し' allow \
+  "$(decision "$(run "$F" "$(jq -nc --arg s "$SID" '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__send_message",tool_input:{session_id:"x"}}')")")"
+check 54 F 'deny 文面に 3 択 (サイドバー) が入る' yes \
+  "$(has "$(run "$F" "$(msg_payload "$SID" '[決定] ユーザー指示で self-archive')")" 'サイドバーから archive')"
 
 echo
 echo "--- 実物の ~/.claude/state を汚していないことの確認 (HOME=$HOME) ---"
