@@ -11,7 +11,6 @@ B="${HERE}/block-parent-repo-writes.sh"
 C="${HERE}/block-parent-commits.sh"
 D="${HERE}/block-child-asks-user.sh"
 E="${HERE}/warn-archive-refused.sh"
-F="${HERE}/block-archive-relay.sh"
 
 SANDBOX=$(mktemp -d /tmp/parent-role-hooks-test.XXXXXX)
 trap 'rm -rf "$SANDBOX"' EXIT
@@ -81,7 +80,6 @@ archive_payload_blocks() { # tool_response が content block 配列で来る形
   jq -nc --arg s "$1" --arg t "$2" --arg r "$3" \
     '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__archive_session",tool_input:{session_id:$t},tool_response:[{type:"text",text:$r}]}'
 }
-msg_payload() { jq -nc --arg s "$1" --arg m "$2" '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__send_message",tool_input:{session_id:"local_child_1",message:$m}}'; }
 
 REFUSED='Session local_child_1 was not archived: the app is keeping it for the user (pinned or in use). Wait or ask the user; they can also archive it from the sidebar.'
 BUSY='Session local_child_1 was not archived: it is still working (mid-turn).'
@@ -190,40 +188,19 @@ check 34 E '2 回目の文面: 3 択 (タブを閉じる)' yes "$(has "$out2" '�
 check 35 E '2 回目の文面: 3 択 (サイドバーから archive)' yes "$(has "$out2" 'サイドバーから archive')"
 check 36 E '2 回目の文面: 3 択 (子のタブに直接「畳んで」)' yes "$(has "$out2" '直接「畳んで」')"
 check 37 E '2 回目の文面: 待たずに続行 + 次の turn で list_sessions' yes "$(has "$out2" '次の turn の頭で list_sessions')"
-check 38 E '2 回目の文面: 子への [決定] 中継を**送らない**と書く' yes "$(has "$out2" '送らない')"
-check 39 E '2 回目の文面: 中継の手順 (子が archive_session を呼ぶ) を出さない' no "$(has "$out2" 'session_id: "self" } を呼ぶ')"
-check 40 E '証跡: ~/.claude/state/archive-refused/<sid>-<target> = 2' 2 "$(cat "${HOME}/.claude/state/archive-refused/${SID}-local_child_1" 2>/dev/null)"
+check 38 E '2 回目の文面: 子へ [決定] ユーザー指示で self-archive を送る手順を出す' yes "$(has "$out2" '[決定] ユーザー指示で self-archive')"
+check 39 E '2 回目の文面: [決定] にユーザーの原文を要約せず貼れと書く' yes "$(has "$out2" '原文を、要約せずそのまま貼る')"
+check 40 E '2 回目の文面: 原文が無いなら送らないと書く' yes "$(has "$out2" '貼れる原文が無いなら送らない')"
+check 41 E '証跡: ~/.claude/state/archive-refused/<sid>-<target> = 2' 2 "$(cat "${HOME}/.claude/state/archive-refused/${SID}-local_child_1" 2>/dev/null)"
 out3=$(run_err "$E" "$(archive_payload_blocks "$SID" local_child_1 "$REFUSED")")
-check 41 E 'tool_response が content block 配列でも拾う (3 回目)' yes "$(has "$out3" '3 回目')"
+check 42 E 'tool_response が content block 配列でも拾う (3 回目)' yes "$(has "$out3" '3 回目')"
 reset_markers
 outs=$(run_err "$E" "$(archive_payload "$SID" self "$REFUSED")")
-check 42 E 'self の拒否 → 「再試行しない」+ サイドバー / タブを閉じる' yes "$(has "$outs" 'サイドバーから archive')"
-check 43 E 'self の拒否 → 親へ送る話にしない' yes "$(has "$outs" '親へ送る話でも')"
-check 44 E 'self の拒否は証跡を作らない (再試行の回数を数える対象ではない)' none \
+check 43 E 'self の拒否 → 「再試行しない」+ サイドバー / タブを閉じる' yes "$(has "$outs" 'サイドバーから archive')"
+check 44 E 'self の拒否 → 親へ送る話にしない' yes "$(has "$outs" '親へ送る話でも')"
+check 45 E 'self の拒否は証跡を作らない (再試行の回数を数える対象ではない)' none \
   "$( [ -e "${HOME}/.claude/state/archive-refused/${SID}-self" ] && echo made || echo none)"
-check 45 E 'tool_response 無し → 素通し' 0 "$(run_rc "$E" "$(jq -nc --arg s "$SID" '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__archive_session",tool_input:{session_id:"x"}}')")"
-
-echo
-echo "=== F. block-archive-relay.sh (PreToolUse send_message。self-archive の中継を塞ぐ) ==="
-reset_markers
-check 46 F '[決定] ユーザー指示で self-archive → deny' deny \
-  "$(decision "$(run "$F" "$(msg_payload "$SID" '[決定] ユーザー指示で self-archive。archive_session { session_id: "self" } を呼ぶこと')")")"
-check 47 F '「ユーザー指示」+ archive_session (タグ無し) → deny' deny \
-  "$(decision "$(run "$F" "$(msg_payload "$SID" 'ユーザー指示です。archive_session を self で呼んで畳んでください')")")"
-check 48 F '[決定] + 「自分で畳んで」 → deny' deny \
-  "$(decision "$(run "$F" "$(msg_payload "$SID" '[決定] 自分で畳んでください')")")"
-check 49 F '[決定] だけ (archive の語なし) → allow' allow \
-  "$(decision "$(run "$F" "$(msg_payload "$SID" '[決定] マージ順は c135-1 → c135-2。rebase してから push')")")"
-check 50 F '[質問] への回答 (archive の語なし) → allow' allow \
-  "$(decision "$(run "$F" "$(msg_payload "$SID" '[回答] B 案で進めてください')")")"
-check 51 F 'archive の語はあるが [決定] / ユーザー指示が無い → allow' allow \
-  "$(decision "$(run "$F" "$(msg_payload "$SID" 'archive は親が打ちます。self-archive はしないでください')")")"
-check 52 F 'marker が無くても本文で判定する (誰が送っても誤り)' deny \
-  "$(decision "$(run "$F" "$(msg_payload "local_other" '[決定] ユーザー指示で self-archive')")")"
-check 53 F 'message が無い payload → 素通し' allow \
-  "$(decision "$(run "$F" "$(jq -nc --arg s "$SID" '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__send_message",tool_input:{session_id:"x"}}')")")"
-check 54 F 'deny 文面に 3 択 (サイドバー) が入る' yes \
-  "$(has "$(run "$F" "$(msg_payload "$SID" '[決定] ユーザー指示で self-archive')")" 'サイドバーから archive')"
+check 46 E 'tool_response 無し → 素通し' 0 "$(run_rc "$E" "$(jq -nc --arg s "$SID" '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__archive_session",tool_input:{session_id:"x"}}')")"
 
 echo
 echo "--- 実物の ~/.claude/state を汚していないことの確認 (HOME=$HOME) ---"

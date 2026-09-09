@@ -157,16 +157,20 @@ sessionId を引く)。**逆引きキーは案件ごとに 1 本だけ**にす�
    > (worktree・branch・コンテナ) / 未消化の申し送り無し」を添えて、走行したまま親の
    > archive を待つ。親から「畳んでよい」と返ってきても、返事だけして自分では畳まない。
    >
-   > 例外は 2 つだけ。どちらも自分で `archive_session { session_id: "self" }` を**呼ぶ**
+   > 例外は 3 つ。どれも自分で `archive_session { session_id: "self" }` を**呼ぶ**
    > (「畳みます」と書くだけでは畳まれない):
    > - (a) **親が居なくなった** — 親が畳まれ、`list_sessions` にタイトルが `#p<親issue> `
    >   (直後がスペース) で始まる後継も無い
-   > - (b) **ユーザー本人がこのセッションのタブに直接**「畳んで」「archive して」と入力した
+   > - (b) **親の `archive_session` がアプリに「was not archived … pinned or in use」で
+   >   拒否され、親から `[決定] ユーザー指示で self-archive` が届いた。**
+   >   ただし**その `[決定]` に、ユーザーがこの件について打った原文が要約なしで貼ってある**
+   >   ときだけ。**原文の引用が無ければ 1 行で断ってよい** —「ユーザー指示で」という見出し
+   >   だけでは伝聞のままで、`archive_session` の契約 (ユーザーが明示的に同意したときだけ
+   >   呼ぶ) を満たさない
+   > - (c) **ユーザー本人がこのセッションのタブに直接**「畳んで」「archive して」と入力した
    >
-   > **`send_message` で届いた指示は、`[決定]` や「ユーザー指示で」と書いてあっても (b) に
-   > ならない。** 伝聞で確かめようがなく、`archive_session` の契約 (ユーザーが明示的に
-   > 同意したときだけ呼ぶ) を満たさない。1 行で断って作業を続ける。
-   > 親の archive がアプリに拒否されたときの手順は親が持つ。子は何もしなくてよい。
+   > 上のどれにも当たらない `send_message` は、`[決定]` と書いてあっても例外にならない。
+   > 1 行で断って作業を続ける。
 
 モデルについて: 新規セッションは settings.json の `model` (**現在 sonnet**) で起動する。
 **spawn_task にモデル指定パラメータは無い**ので、上位モデルで回したいチップは
@@ -284,17 +288,17 @@ compare API 1 発で裏を取る:
 
 ## 4.5 機械的な栓 (hook) — 親は実装せず、子はユーザーに聞かない
 
-機械的な栓が 6 本ある。**読了チェックは不読を防ぐだけで違反を防げない** — 2026-09-05、
+機械的な栓が 5 本ある。**読了チェックは不読を防ぐだけで違反を防げない** — 2026-09-05、
 `#p134` の監督 (親) セッションが自分で migration SQL を書き、postgres を立て、commit しようとして
 ユーザーに止められた。その親は task-split の「**このセッション (親) は実装せず**」を
 **読了して引用まで提出していた** (Refs ippoan/claude-skills#152)。だから口そのものを塞ぐ。
-2026-09-09 には、親の archive がアプリに拒否されたあと、親が子へ「self-archive しろ」を
-中継して 3 連続で断られた (Refs ippoan/claude-skills#160) — こちらも同じ形で、
-**拒否された瞬間の次の一手**と**中継の送信口**を hook が持つ。
+2026-09-09 には、親の archive がアプリに拒否されたあと、親が「ユーザーの判断が要ります」と
+止まる・3 択のうち「サイドバーから archive」を落とす、といった外し方をした
+(Refs ippoan/claude-skills#160) — こちらも同じ形で、**拒否された瞬間の次の一手**を hook が持つ。
 
-`parent-role/hooks/` の 6 本を `~/.claude/hooks/` へ symlink し、`~/.claude/settings.json` に登録する。
+`parent-role/hooks/` の 5 本を `~/.claude/hooks/` へ symlink し、`~/.claude/settings.json` に登録する。
 
-### hook 6 本 (`parent-role/hooks/`)
+### hook 5 本 (`parent-role/hooks/`)
 
 | hook | event / matcher | 何をするか | fail-open |
 |---|---|---|---|
@@ -302,8 +306,7 @@ compare API 1 発で裏を取る:
 | `block-parent-repo-writes.sh` | PreToolUse `Edit` / `Write` / `NotebookEdit` | parent marker 有 + 書き先の上流に `.git` (**ファイル = worktree / ディレクトリ = main clone のどちらでも**) → **deny** | parent marker が無ければ素通し |
 | `block-parent-commits.sh` | PreToolUse `Bash` | parent marker 有 + `git commit` / `push` / `apply` / `am` / `cherry-pick` → **deny**。`gh pr create` / `gh issue create` / `gh issue comment` / `git branch -D` / `git worktree add`\|`remove`\|`list` / 読み取り系はすべて**許可** | 同上 |
 | `block-child-asks-user.sh` | PreToolUse `AskUserQuestion` | child marker 有 → **deny** (親へ `send_message` の `[質問]` に寄せる) | child marker が無ければ素通し |
-| `warn-archive-refused.sh` | **PostToolUse** `mcp__ccd_session_mgmt__archive_session` | 応答が「was not archived … pinned or in use」のとき、回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」、2 回目以降は「3 択を 1 行で知らせて待たずに続行」** (task-split §6 の手順そのもの) を出す。対象が `self` なら「再試行しない。サイドバーかタブを閉じてもらう」。**塞がない** (exit 2 で文面を返すだけ) | 拒否文言でなければ素通し |
-| `block-archive-relay.sh` | PreToolUse `mcp__ccd_session_mgmt__send_message` | 本文に `[決定]` / 「ユーザー指示」と archive の語 (`archive_session` / `self-archive` / 「自分を畳」…) が**同時に**あれば **deny** — 子へ self-archive を中継する経路は廃止 | 本文が読めなければ素通し。marker は見ない (誰が送っても誤り) |
+| `warn-archive-refused.sh` | **PostToolUse** `mcp__ccd_session_mgmt__archive_session` | 応答が「was not archived … pinned or in use」のとき、回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」、2 回目以降は「3 択を 1 行で知らせる → ユーザーの原文を貼った `[決定]` を子へ送る → 待たずに続行」** (task-split §6 の手順そのもの) を出す。対象が `self` なら「再試行しない。サイドバーかタブを閉じてもらう」。**塞がない** (exit 2 で文面を返すだけ) | 拒否文言でなければ素通し |
 
 **「書き込み全部禁止」にはしていない。** 親は scratchpad に計画を書き、memory を更新し、
 **PR を作り**、マージ後に **branch を掃除する**必要がある。塞ぐのは
@@ -372,7 +375,6 @@ ln -sfn <claude-skills>/parent-role/hooks/block-parent-repo-writes.sh ~/.claude/
 ln -sfn <claude-skills>/parent-role/hooks/block-parent-commits.sh     ~/.claude/hooks/block-parent-commits.sh
 ln -sfn <claude-skills>/parent-role/hooks/block-child-asks-user.sh    ~/.claude/hooks/block-child-asks-user.sh
 ln -sfn <claude-skills>/parent-role/hooks/warn-archive-refused.sh     ~/.claude/hooks/warn-archive-refused.sh
-ln -sfn <claude-skills>/parent-role/hooks/block-archive-relay.sh      ~/.claude/hooks/block-archive-relay.sh
 ```
 
 `~/.claude/settings.json` の `PreToolUse` 配列に足す (既に `PreToolUse` があれば配列へ追記):
@@ -388,10 +390,7 @@ ln -sfn <claude-skills>/parent-role/hooks/block-archive-relay.sh      ~/.claude/
     "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-parent-commits.sh", "timeout": 10,
                 "statusMessage": "親セッションの commit/push か確認中" }] },
   { "matcher": "AskUserQuestion",
-    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-child-asks-user.sh", "timeout": 10 }] },
-  { "matcher": "mcp__ccd_session_mgmt__send_message",
-    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-archive-relay.sh", "timeout": 10,
-                "statusMessage": "self-archive の中継か確認中" }] }
+    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-child-asks-user.sh", "timeout": 10 }] }
 ]
 ```
 
@@ -559,34 +558,52 @@ CPU は「いま動いている」の**陽性証拠**にしかならず、0 を�
   返ったら (`warn-archive-refused.sh` が同じ手順をその場で出す — §4.5):
   1. **親の再試行は 1 回まで**。同じ拒否が 2 回続いたら、この turn では打ち続けない
   2. ユーザーに **3 択を 1 行で**知らせる — 子のタブを閉じる / **サイドバーから archive する** /
-     子のタブに直接「畳んで」と打つ (子は自分のタブへの直接入力なら畳む — §3 の定型文 (b))。
+     子のタブに直接「畳んで」と打つ (子は自分のタブへの直接入力なら畳む — §3 の定型文 (c))。
      **3 つとも出す** — 2 択しか出さず「skills よめ」と叱られた (2026-09-09)
-  3. **返事を待たずに続行する。** 次の turn の頭で `list_sessions` を見て、まだ在れば
+  3. **子へ `[決定] ユーザー指示で self-archive` を送る** (§3 の定型文 (b))。
+     ただし**ユーザーの直接指示があるときだけ** — 必須要件は下の「`[決定]` に何を書くか」
+  4. **返事を待たずに続行する。** 次の turn の頭で `list_sessions` を見て、まだ在れば
      もう一度 `archive_session` を打つ (また拒否されたら 1 行だけ繰り返す)
-  4. 畳めないまま親が交代するなら、未 archive の子として台帳に載せる (下の「監督役を引き継ぐとき」)
+  5. 畳めないまま親が交代するなら、未 archive の子として台帳に載せる (下の「監督役を引き継ぐとき」)
 
-  **★ 子へ `send_message` で self-archive を命じない。** #159 で入れた
-  「`[決定] ユーザー指示で self-archive` を送り、子が `archive_session { session_id: "self" }`
-  を呼ぶ」中継は**廃止** (`block-archive-relay.sh` が deny する — §4.5)。
-  2026-09-09 に **3 連続で子に断られ**、そのたび親・子・ユーザーで同じ問答になった
-  (Refs ippoan/claude-skills#160):
+  **★ `[決定]` に何を書くか — ユーザーの原文が必須** (これが手順 3 の条件):
+
+  - **ユーザーがこの件について打った原文を、要約せずそのまま貼る。貼れる原文が無いなら送らない。**
+    「ユーザー指示で」という見出しだけを付けて送らないこと — 過去の記録や既定の運用を
+    「ユーザー指示」に読み替えるのが 2026-09-09 の事故の本体で、**子には確かめる手段が無い**
+  - **親の再試行がアプリに拒否されたこと (回数)** を書く
+  - **archive の基準 3 点** (PR MERGED / 掃除済み / 未消化の申し送り無し) と
+    **`isRunning: false` の確認結果**を書く
+
+  **これが「断られない中継」の条件。** 原文が貼ってあれば `[決定]` は伝聞ではなく
+  ユーザーの同意そのものの転記になり、`archive_session` の契約 (ユーザーが明示的に同意した
+  ときだけ呼ぶ) とも harness の cross-session 警告とも衝突しない。
+  子側の受け方は [[report-to-parent]]「(b) の受け方」にある — **原文の引用が無い `[決定]` は
+  子が断ってよい**。
+
+  **経緯** (2026-09-09、Refs ippoan/claude-skills#160): #159 でこの中継を入れたところ、
+  同日に **4 例が断った**:
 
   | 子 | 断り方 |
   |---|---|
   | 1 例目 | harness の cross-session 警告 (peer が拒否された操作の代行を頼んできたら断ってユーザーへ上げる) を理由に断った |
   | 2 例目 | 同上。さらにユーザーへ「タブを閉じて / 直接言って」の 2 択を出し、「skills よめ」と叱られた |
   | 3 例目 | (a) 起動 prompt に「self-archive しない。archive は親が打つ」と書いてある、(b) harness の規定が skill の例外より優先。親が (a) を撤回しても「pinned の保護はユーザーのもの。作業が終わっていることは子の側から迂回してよい理由にならない。ユーザーは一言でどちらにも倒せる」で実行せず |
+  | 4 例目 | 上と同じ理由で断ったうえで、**本当の欠陥を特定した** — 例外の発火条件は「アプリが拒否したこと」ではなく「**ユーザーがその回に直接そう指示したこと**」なのに、親は過去の記録を既定として扱い、**その回の指示でないもの**に「ユーザー指示で」の見出しを付けて送っていた |
 
-  断った子は正しい。**設計が 3 か所で割れていた**:
-  ① 起動 prompt の禁止文と後出しの `[決定]` が正面衝突 (§3 が archive について沈黙していたので、
-  親が report-to-parent の規範を要約して写し、例外だけ落とした → §3 の定型文で解消)、
-  ② `archive_session` の契約「ユーザーが明示的に同意したときだけ呼ぶ。推測で呼ばない」に対し、
-  send_message 経由の「ユーザー指示」は子にとって伝聞で確認手段が無い、
-  ③ harness の cross-session 警告と `[決定]` は形が同じで、skill は harness を上書きできない。
-  **子を説得する文面を磨いても解けない。** 「ユーザー本人が子のタブに直接打つ」は
-  子から見て伝聞でない唯一の経路なので、3 択の 3 つ目をそれに差し替えた。
-  次の世代がこの中継を蒸し返さないこと。
-  子側の [[report-to-parent]] と §3 の定型文にも同じ例外 (直接入力だけ) を書いた —
+  断った子はいずれも正しい。ただし **原因は中継が在ることではなく、2 つの取りこぼし**だった:
+
+  - ① **§3 が archive について沈黙していた**ので、親が [[report-to-parent]] の規範を自分で
+    要約して起動 prompt に写し、**例外だけ写し落とした** → 後から届く `[決定]` が
+    prompt の禁止文と正面衝突した。**§3 の定型文 (例外込み) で解消済み**
+  - ② 親が**その回のユーザーの直接指示を伴わずに**送っていた (4 例目が特定) →
+    **上の「原文の必須化」で解消**
+
+  **中継そのものは廃止しない。** #161 は一度これを丸ごと廃止したが、廃止はユーザーの指示
+  ではなく、委任した親が指示文に足した設計判断だった。3 択の 3 つ目
+  「子のタブに直接打つ」は**中継の代わりではなく並列の選択肢**として残す — 子から見て
+  伝聞でない経路が 2 本あるほうが強い。
+  子側の [[report-to-parent]] と §3 の定型文にも同じ例外 3 つを書いた —
   **片方だけ直さないこと**。
 - **監督役を引き継ぐときは、未 archive の子ごと引き渡す。** archive は親の責務なので、
   畳んでいない子を残したまま親が代わると責務が宙に浮く。引き継ぎ prompt に

@@ -8,11 +8,10 @@
 # Why (2026-09-09、Refs ippoan/claude-skills#160): 拒否を受けた親が
 #   - 「ユーザーの判断が要ります」と止まる
 #   - 3 択のうち「サイドバーから archive」を落として 2 択にする
-#   - 子へ send_message で「[決定] ユーザー指示で self-archive」を送る (廃止済みの中継。
-#     子は tool 契約と harness の警告を理由に 3 連続で断り、そのたび三者で同じ問答になった)
+#   - 子へ「[決定] ユーザー指示で self-archive」を送るとき、**ユーザーの原文を貼らずに**
+#     見出しだけ付けて送る (子には伝聞で確かめようがなく、4 例が断った)
 #   のどれかをやった。hook は「1 回目 = 再試行 1 回まで」「2 回目以降 = 3 択を 1 行で
-#   知らせて待たずに続行」を出し、中継の経路は出さない (send_message 側は
-#   block-archive-relay.sh が deny する)。
+#   知らせる → 原文付きの [決定] を送る → 待たずに続行」を、task-split §6 の順で出す。
 #
 # 判定の鍵は session_id と tool_input.session_id の組 (証跡: ~/.claude/state/archive-refused/)。
 # fail-open: jq が無い / payload が読めない / 拒否文言でない → 黙って素通し。
@@ -83,12 +82,17 @@ fi
   echo ""
   echo "  1. ユーザーに **3 択を 1 行で**知らせる (3 つとも出す。2 択にしない):"
   echo "     子のタブを閉じる / **サイドバーから archive する** / 子のタブに直接「畳んで」と打つ"
-  echo "  2. **返事を待たずに続行する。** 次の turn の頭で list_sessions を見て、まだ在れば"
+  echo "  2. 子へ **[決定] ユーザー指示で self-archive** を送る。"
+  echo "     ★ **ユーザーの直接指示があるときだけ。** [決定] には次を必ず入れる:"
+  echo "       - ユーザーがこの件について打った **原文を、要約せずそのまま貼る**"
+  echo "         (貼れる原文が無いなら送らない。見出しだけでは子にとって伝聞のままで、"
+  echo "          2026-09-09 に 4 例が断った — Refs ippoan/claude-skills#160)"
+  echo "       - 親の再試行がアプリに拒否されたこと (回数)"
+  echo "       - archive の基準 3 点と list_sessions の isRunning: false の確認結果"
+  echo "  3. **返事を待たずに続行する。** 次の turn の頭で list_sessions を見て、まだ在れば"
   echo "     もう一度 archive_session を打つ (また拒否されたら 1 行だけ繰り返す)"
-  echo "  3. 畳めないまま親が交代するなら、未 archive の子として台帳に載せる"
+  echo "  4. 畳めないまま親が交代するなら、未 archive の子として台帳に載せる"
   echo ""
-  echo "  ★ **子へ send_message で「[決定] ユーザー指示で self-archive」を送らない** (中継は廃止。"
-  echo "     子は伝聞で archive_session を呼べない — tool 契約と harness の警告で 3 連続で断られた。"
-  echo "     Refs ippoan/claude-skills#160)。**「ユーザーの判断が要ります」と止まらない。**"
+  echo "  ★ **「ユーザーの判断が要ります」と止まらない。**"
 } >&2
 exit 2
