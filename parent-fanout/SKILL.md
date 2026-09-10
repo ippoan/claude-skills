@@ -22,6 +22,7 @@ description: >
 |---|---|---|
 | **調査** (分割の前) | 全タスク候補のコードを親が読む | N 個の範囲を 1 本で順番に読む。親の context も食う |
 | **裏取り** (子の [完了] 後) | compare で実測し申告と突き合わせる | 子が同時に終わると N 件が直列で待つ |
+| **archive** (子の [完了] 後) | 子へ send_message した直後に `archive_session` を打ち、「live work」「turn in progress」で弾かれる | 子はメッセージを受けるたびにターンを始める。止まるのを待つ専用 agent (`session-archiver`) へ逃がす |
 | **掃除** (子の archive 後) | 子が拒否された `git worktree remove` / `git branch -D` を親が代わりに打とうとする | それは「拒否された操作の代行」になる。専用 agent (`worktree-janitor`) へ逃がす |
 
 **どちらも「読んで事実を集める」仕事で、判断ではない。** だから逃がせる。
@@ -84,6 +85,45 @@ description: >
 auditor は `go` / `rebase-first` / `no-go` / `要確認` を推奨で返す。
 **親はそれを読んで決める。** auditor は PR を作らないし、作らせてはいけない。
 
+## 3.4 archive — 子が止まるのを `session-archiver` で待つ
+
+子はメッセージを受けるたびにターンを始める。**送った直後の `archive_session` はアプリに
+弾かれる** — 2026-09-10 の #p135 の親の 4 回の拒否 (「it still has live work (…)」3 回 /
+「it is still working (a turn in progress)」1 回) は、どれも子へ send_message した直後だった。
+子が止まって落ち着いた後の archive は 3 件とも 1 回で通った。
+
+⇒ 基準 3 点 ([[task-split]] §6) を親が判定したら、**自分で打つ代わりに `session-archiver` を
+`Agent` の `run_in_background: true` で起動する。** 渡すもの (1 つでも欠けると `要確認`):
+
+- 子の sessionId
+- 対応する PR (`owner/repo#N`) と、MERGED を確かめたこと
+- 掃除の状態 (済み / archive 後に `worktree-janitor` で片付ける)
+- 未消化の申し送りが無いこと
+
+agent は `isRunning: false` が 2 回続けて観測され、`lastActivityAt` が 60 秒以上前になるまで
+待ってから `archive_session` を打つ (最大 15 分。拒否されたら待ち直して最大 3 回)。
+子へ send_message はしない (送るとターンが始まる)。3 回とも弾かれたら拒否文言 3 つを返すので、
+親は [[task-split]] §6「アプリが親の archive_session を拒否したとき」の手順 2 以降へ進む。
+成功したら §3.5 の `worktree-janitor` へ。
+
+- **待ち方**: この環境は `sleep 25` 級の単発 sleep を塞ぎ、短い sleep の連結も禁じる
+  (2026-09-10 実測)。agent は時間ではなく、**子の transcript (`.jsonl`) の mtime が N 秒以上
+  古くなるまで**の until-loop で待つ (`list-child-sessions.sh` と同じ算出)
+- **hook との関係**: サブエージェントの tool 呼び出しは、hook から見ると**親と同じ session_id**
+  (2026-09-10 実測: サブエージェントの Skill 呼び出しが親の `skills-invoked/<session_id>` に
+  記録された)。hook は session_id しか見ないので、agent の拒否は `warn-archive-refused.sh` の
+  親の回数に数えられ、2 回目で `pending` が立つと `require-archive-decision-sent.sh` が
+  **親と agent の両方**を塞ぐはず (実測は session_id の一致まで。サブエージェントの拒否・deny そのものは未実測)。
+  agent はそこで `中断(pending)` を返すので、親は §6 手順 3 の [決定] を送る
+  (本文が手元に無ければ `archive_session` をもう一度打てば hook が同じ本文を出す)。
+  **親が先に自分で打つと回数が進む** — 待ちは最初から agent に任せる
+
+### インストール
+
+```bash
+ln -sfn <claude-skills>/.claude/agents/session-archiver.md ~/.claude/agents/session-archiver.md
+```
+
 ## 3.5 掃除フェーズ — `worktree-janitor` を background で呼ぶ
 
 子が archive 済みなのに、自分の worktree と local branch を自分で消せずに残ることがある
@@ -133,6 +173,7 @@ child-auditor を並列起動 (終わった子のぶんだけ)
 | 子の進捗 | 子の `send_message` ([[report-to-parent]]) と harness の終了通知 |
 | CI の結果 | [[gh-actions-live]] の bridge (push で届く) |
 | issue の動き | `subscribe_issue_activity` (MCP) |
+| 子が止まること (archive の前) | **push で知る手段が無い** → 例外として `session-archiver` を background で置く (§3.4。上限 15 分・archive 3 回・条件待ち) |
 
 **★ ただし「起きなかった」を沈黙と区別すること。** 子の報告が来ないことは
 「まだ動いている」の証拠にならない。**状態を口にする前に `list_sessions` を見る**

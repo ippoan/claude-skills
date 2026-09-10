@@ -379,7 +379,7 @@ check 101 F '(e) pending 無し + Bash → 素通し' allow "$(decision "$(run "
 check 102 F '(e) session_id の無い payload → 素通し' allow \
   "$(decision "$(run "$F" '{"tool_name":"Bash","tool_input":{"command":"ls"}}')")"
 with_quotes; refuse local_child_1; refuse local_child_1
-check 103 F '(e) 別 session_id (サブエージェント等) は pending を共有しない' allow \
+check 103 F '(e) 別 session_id (別セッション。サブエージェントは親と同じ id) は pending を共有しない' allow \
   "$(decision "$(run "$F" "$(bash_payload local_other_2 'ls')")")"
 
 echo
