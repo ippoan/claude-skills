@@ -31,7 +31,8 @@
 # 解除: 正しい send_message の 1 回か、ユーザー本人による rm (Bash も塞がれるのでモデルは消せない)。
 # サブエージェントの tool 呼び出しは親と同じ session_id で届く (2026-09-10 実測: サブエージェントの
 # Skill 呼び出しが skills-invoked/<親の session_id> に記録された) ので、pending は親が起動した
-# サブエージェント (session-archiver 等) のツールも塞ぐ。別 session_id = 別セッションは共有しない。
+# サブエージェント (session-archiver 等) のツールも塞ぐはず (その deny そのものは未実測)。
+# 別 session_id = 別セッションは共有しない。
 set -u
 command -v jq >/dev/null 2>&1 || exit 0
 

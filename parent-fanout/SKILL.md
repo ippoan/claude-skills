@@ -111,8 +111,9 @@ agent は `isRunning: false` が 2 回続けて観測され、`lastActivityAt` �
   古くなるまで**の until-loop で待つ (`list-child-sessions.sh` と同じ算出)
 - **hook との関係**: サブエージェントの tool 呼び出しは、hook から見ると**親と同じ session_id**
   (2026-09-10 実測: サブエージェントの Skill 呼び出しが親の `skills-invoked/<session_id>` に
-  記録された)。agent の拒否は `warn-archive-refused.sh` の親の回数に数えられ、2 回目で
-  `pending` が立つと `require-archive-decision-sent.sh` が**親と agent の両方**を塞ぐ。
+  記録された)。hook は session_id しか見ないので、agent の拒否は `warn-archive-refused.sh` の
+  親の回数に数えられ、2 回目で `pending` が立つと `require-archive-decision-sent.sh` が
+  **親と agent の両方**を塞ぐはず (実測は session_id の一致まで。サブエージェントの拒否・deny そのものは未実測)。
   agent はそこで `中断(pending)` を返すので、親は §6 手順 3 の [決定] を送る
   (本文が手元に無ければ `archive_session` をもう一度打てば hook が同じ本文を出す)。
   **親が先に自分で打つと回数が進む** — 待ちは最初から agent に任せる

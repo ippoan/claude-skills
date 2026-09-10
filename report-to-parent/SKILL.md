@@ -276,8 +276,9 @@ hook は `session_id` を鍵にする。**Agent tool のサブエージェント
 `~/.claude/state/skills-invoked/<親の session_id>` に行が増えた。サブエージェントの transcript の
 `sessionId` も親と同一。以前ここに「別 session で走り親の marker を持たない → B/C を素通しする」と
 書いていたのは誤り — Refs ippoan/alc-app-s3#135)。
-⇒ **親の marker はサブエージェントにも効く** — B/C はサブエージェントの repo 書き込み・commit も
-deny し、`require-archive-decision-sent.sh` の pending もサブエージェントのツールを塞ぐ。
+⇒ hook は `session_id` しか見ないので、**親の marker はサブエージェントにも効くはず** — B/C は
+サブエージェントの repo 書き込み・commit も deny し、`require-archive-decision-sent.sh` の pending も
+サブエージェントのツールを塞ぐはず (実測は session_id の一致まで。サブエージェントへの deny そのものは未実測)。
 `task-surveyor` / `child-auditor` / `simplify-reviewer` はいずれも read-only なので B/C に当たらず、
 調査・裏取りはそのまま回る。親が抱えたものを background の `Agent` へ逃がす形は変わらない —
 **親の turn が空くのでユーザーの指示に常に応答できる**。**deliberate と accidental を分けるのが hook の役目。**
