@@ -22,6 +22,7 @@ description: >
 |---|---|---|
 | **調査** (分割の前) | 全タスク候補のコードを親が読む | N 個の範囲を 1 本で順番に読む。親の context も食う |
 | **裏取り** (子の [完了] 後) | compare で実測し申告と突き合わせる | 子が同時に終わると N 件が直列で待つ |
+| **掃除** (子の archive 後) | 子が拒否された `git worktree remove` / `git branch -D` を親が代わりに打とうとする | それは「拒否された操作の代行」になる。専用 agent (`worktree-janitor`) へ逃がす |
 
 **どちらも「読んで事実を集める」仕事で、判断ではない。** だから逃がせる。
 逃がせないのは**決定** (分割・マージ順・go・PR 作成・archive) で、これは親に残る。
@@ -82,6 +83,31 @@ description: >
 
 auditor は `go` / `rebase-first` / `no-go` / `要確認` を推奨で返す。
 **親はそれを読んで決める。** auditor は PR を作らないし、作らせてはいけない。
+
+## 3.5 掃除フェーズ — `worktree-janitor` を background で呼ぶ
+
+子が archive 済みなのに、自分の worktree と local branch を自分で消せずに残ることがある
+(2026-09-10、[[task-split]] §4)。子が `git -C <main clone> worktree remove <自分の
+worktree> && git branch -D …` を打って auto mode の分類器に拒否されたケース。
+**親が代わりに打つのは「拒否された操作の代行」になるので打たない。**
+
+⇒ **`worktree-janitor` を `Agent` の `run_in_background: true` で起動する。**
+渡すもの (1 つでも欠けると agent は何もせず `要確認` を返す):
+
+- repo の絶対パス / 片付ける worktree の絶対パス / 消す local branch 名
+- 対応する PR (`owner/repo#N`)
+- **その子が archive 済みであることを `list_sessions` で確かめた結果**
+
+agent 側は PR が MERGED か・worktree が main clone でないか・未コミット変更が無いか・
+branch がどこにも checkout されていないか・生きた pid が無いか、の 5 点を確認してから
+`git worktree remove` (`--force` なし) → `git branch -D` → `git worktree prune` を実行する。
+remote branch の削除・main clone や他セッションの worktree への操作はしない。
+
+### インストール
+
+```bash
+ln -sfn <claude-skills>/.claude/agents/worktree-janitor.md ~/.claude/agents/worktree-janitor.md
+```
 
 ## 4. ループの回し方 — **`sleep` で待たない**
 
