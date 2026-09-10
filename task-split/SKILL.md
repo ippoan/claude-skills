@@ -279,6 +279,13 @@ compare API 1 発で裏を取る:
   **squash merge だと `git merge-base --is-ancestor` では merged と判定できない** —
   必ず PR の状態 (MERGED) で見る。掃除は子の [完了] 後に親が指示するか、全タスク
   完了後にまとめてやる。あわせて `archive_session` で終わったセッションを畳む。
+- **子の手元の掃除が拒否されたら、親が代わりに打たず `worktree-janitor` を
+  background で呼ぶ。** 子が自分の worktree/branch を消そうとして auto mode の
+  分類器に拒否されることがある。親が代わりに `git worktree remove` /
+  `git branch -D` を打つのは「拒否された操作の代行」になるため打たない
+  (実害 2026-09-10、Refs ippoan/claude-skills#135)。子が archive 済みであることを
+  `list_sessions` で確かめたうえで、repo/worktree/branch/対応 PR を渡して
+  `Agent` の `worktree-janitor` (`run_in_background: true`) を起動する。
 - **remote branch は repo 設定に任せる。** `delete_branch_on_merge` を on にしておけば
   merge 主体 (workflow / 人) に関係なく自動削除される。off のまま子に
   `push --delete` させると merged-PR ガード系の hook に弾かれがち — その場合も
