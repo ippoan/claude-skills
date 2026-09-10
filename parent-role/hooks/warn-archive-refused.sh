@@ -117,6 +117,22 @@ else
   quotes_ok=no
 fi
 
+# ★ 送るまで口を塞ぐ (Refs ippoan/alc-app-s3#135): 文面を返すだけ (exit 2 の advisory) だと、
+#   親は「子も拒否されたのだから送っても無駄」と自分で判断して送らなかった (2026-09-10、
+#   #p135 第 10 世代)。[決定] を送るべき回だけ宛先の子を pending に書き、
+#   require-archive-decision-sent.sh (PreToolUse 全ツール) が正しい send_message 以外を deny する。
+#   - 原文が無い回は書かない — 本文が「送らない」なのに口を塞ぐと、親は user-quotes.txt に
+#     原文を足すことすらできず詰む
+#   - その子へ 2 通送った後は書かない — task-split §6「3 通目は送らない」。書き続けると
+#     親が turn ごとに archive を再試行するたびに [決定] を送らされる
+#     (送信数 sent-<sid>-<対象> は require-archive-decision-sent.sh が数える)
+sent=0
+[ -f "$state_dir/sent-$safe" ] && sent=$(cat "$state_dir/sent-$safe" 2>/dev/null || echo 0)
+case "$sent" in ''|*[!0-9]*) sent=0 ;; esac
+if [ "$quotes_ok" = yes ] && [ "$sent" -lt 2 ] && [ "$sid" != unknown ] && [ "$target" != unknown ]; then
+  printf '%s\n' "$target" > "$state_dir/pending-$(printf '%s' "$sid" | tr -c 'A-Za-z0-9._-' '_')" 2>/dev/null || true
+fi
+
 skill_file="$HOME/.claude/skills/report-to-parent/SKILL.md"
 exception_text=""
 if [ -f "$skill_file" ]; then

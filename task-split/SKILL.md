@@ -289,17 +289,21 @@ compare API 1 発で裏を取る:
 
 ## 4.5 機械的な栓 (hook) — 親は実装せず、子はユーザーに聞かない
 
-機械的な栓が 5 本ある。**読了チェックは不読を防ぐだけで違反を防げない** — 2026-09-05、
+機械的な栓が 6 本ある。**読了チェックは不読を防ぐだけで違反を防げない** — 2026-09-05、
 `#p134` の監督 (親) セッションが自分で migration SQL を書き、postgres を立て、commit しようとして
 ユーザーに止められた。その親は task-split の「**このセッション (親) は実装せず**」を
 **読了して引用まで提出していた** (Refs ippoan/claude-skills#152)。だから口そのものを塞ぐ。
 2026-09-09 には、親の archive がアプリに拒否されたあと、親が「ユーザーの判断が要ります」と
 止まる・3 択のうち「サイドバーから archive」を落とす、といった外し方をした
 (Refs ippoan/claude-skills#160) — こちらも同じ形で、**拒否された瞬間の次の一手**を hook が持つ。
+2026-09-10 には、その hook が「★ 次の tool 呼び出しは send_message」と出したのに、親が
+「子も拒否されたのだから送っても無駄」と自分で判断して送らなかった (Refs ippoan/alc-app-s3#135)。
+**文面を返すだけの hook (exit 2 の advisory) と memory は、モデルの判断で上書きされる** —
+だから 6 本目が、`[決定]` を送るまで他のツールを塞ぐ。
 
-`parent-role/hooks/` の 5 本を `~/.claude/hooks/` へ symlink し、`~/.claude/settings.json` に登録する。
+`parent-role/hooks/` の 6 本を `~/.claude/hooks/` へ symlink し、`~/.claude/settings.json` に登録する。
 
-### hook 5 本 (`parent-role/hooks/`)
+### hook 6 本 (`parent-role/hooks/`)
 
 | hook | event / matcher | 何をするか | fail-open |
 |---|---|---|---|
@@ -307,7 +311,8 @@ compare API 1 発で裏を取る:
 | `block-parent-repo-writes.sh` | PreToolUse `Edit` / `Write` / `NotebookEdit` | parent marker 有 + 書き先の上流に `.git` (**ファイル = worktree / ディレクトリ = main clone のどちらでも**) → **deny** | parent marker が無ければ素通し |
 | `block-parent-commits.sh` | PreToolUse `Bash` | parent marker 有 + `git commit` / `push` / `apply` / `am` / `cherry-pick` → **deny**。`gh pr create` / `gh issue create` / `gh issue comment` / `git branch -D` / `git worktree add`\|`remove`\|`list` / 読み取り系はすべて**許可** | 同上 |
 | `block-child-asks-user.sh` | PreToolUse `AskUserQuestion` | child marker 有 → **deny** (親へ `send_message` の `[質問]` に寄せる) | child marker が無ければ素通し |
-| `warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗なので `PostToolUseFailure` でしか届かない — Refs ippoan/claude-skills#163) | payload 全体 (JSON 文字列) に「was not archived」が含まれていれば**理由を問わず**拾う (文言ごとに一致条件を足す設計は同じ穴を繰り返す — Refs ippoan/claude-skills#167)。回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」**、**2 回目以降は `[決定] ユーザー指示で self-archive` の本文を hook が完成形で出す** (拒否文言の原文 / 基準 3 点 / `user-quotes.txt` の原文 / report-to-parent の例外 (b) 条文を実行時抽出 / `archive_session self` を呼ぶ指示まで埋め、親が埋めるのは PR 番号 1 か所だけ)。対象が `self` なら「再試行しない。サイドバーかタブを閉じてもらう」。**塞がない** (exit 2 で文面を返すだけ) | 拒否文言でなければ素通し |
+| `warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗なので `PostToolUseFailure` でしか届かない — Refs ippoan/claude-skills#163) | payload 全体 (JSON 文字列) に「was not archived」が含まれていれば**理由を問わず**拾う (文言ごとに一致条件を足す設計は同じ穴を繰り返す — Refs ippoan/claude-skills#167)。回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」**、**2 回目以降は `[決定] ユーザー指示で self-archive` の本文を hook が完成形で出す** (拒否文言の原文 / 基準 3 点 / `user-quotes.txt` の原文 / report-to-parent の例外 (b) 条文を実行時抽出 / `archive_session self` を呼ぶ指示まで埋め、親が埋めるのは PR 番号 1 か所だけ)。対象が `self` なら「再試行しない。サイドバーかタブを閉じてもらう」。**塞がない** (exit 2 で文面を返すだけ)。ただし 2 回目以降で `user-quotes.txt` に原文があり、その子への送信が 2 通未満なら、`~/.claude/state/archive-refused/pending-<session_id>` に子の session_id を 1 行書く (次の行の hook が読む) | 拒否文言でなければ素通し |
+| `require-archive-decision-sent.sh` | PreToolUse `*` (全ツール) | `pending-<session_id>` がある間、**`send_message` で宛先 = pending の子 かつ message が `[決定] ユーザー指示で self-archive` で始まる** (先頭の空白・改行は無視) もの・`list_sessions`・`archive_session`・`ToolSearch` 以外を **deny**。正しい送信で pending を消し、送信数を `sent-<session_id>-<子>` に数える (2 通で打ち止め = 3 通目は送らせない)。解除はその送信か、ユーザー本人の `rm` だけ (Refs ippoan/alc-app-s3#135) | pending が無い / session_id が取れなければ素通し |
 
 **「書き込み全部禁止」にはしていない。** 親は scratchpad に計画を書き、memory を更新し、
 **PR を作り**、マージ後に **branch を掃除する**必要がある。塞ぐのは
@@ -376,9 +381,10 @@ ln -sfn <claude-skills>/parent-role/hooks/block-parent-repo-writes.sh ~/.claude/
 ln -sfn <claude-skills>/parent-role/hooks/block-parent-commits.sh     ~/.claude/hooks/block-parent-commits.sh
 ln -sfn <claude-skills>/parent-role/hooks/block-child-asks-user.sh    ~/.claude/hooks/block-child-asks-user.sh
 ln -sfn <claude-skills>/parent-role/hooks/warn-archive-refused.sh     ~/.claude/hooks/warn-archive-refused.sh
+ln -sfn <claude-skills>/parent-role/hooks/require-archive-decision-sent.sh ~/.claude/hooks/require-archive-decision-sent.sh
 ```
 
-**★ `ls -la ~/.claude/hooks/` で 5 本が symlink (`->`) であることを確かめる。** 実ファイルのコピーに
+**★ `ls -la ~/.claude/hooks/` で 6 本が symlink (`->`) であることを確かめる。** 実ファイルのコピーに
 なっていたら上の `ln -sfn` で symlink に戻す (2026-09-09、`warn-archive-refused.sh` が古いコピーのまま
 残り、repo の最新 (#160 の文面) と食い違っていた — Refs ippoan/claude-skills#163)。
 
@@ -395,9 +401,15 @@ ln -sfn <claude-skills>/parent-role/hooks/warn-archive-refused.sh     ~/.claude/
     "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-parent-commits.sh", "timeout": 10,
                 "statusMessage": "親セッションの commit/push か確認中" }] },
   { "matcher": "AskUserQuestion",
-    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-child-asks-user.sh", "timeout": 10 }] }
+    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-child-asks-user.sh", "timeout": 10 }] },
+  { "matcher": "*",
+    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/require-archive-decision-sent.sh", "timeout": 10 }] }
 ]
 ```
+
+`require-archive-decision-sent.sh` は**全ツール** (`"*"`) に掛ける — `Bash` / `Edit` / `Agent` / `mcp__*` の
+どれかを matcher から漏らすと、そこから [決定] を送らずに先へ進めてしまう。pending が無ければ
+jq 1 回で素通しなので、全ツールに掛けても重くない (`statusMessage` は付けない — 毎回表示されるため)。
 
 `warn-archive-refused.sh` だけは応答を見るので **`PostToolUseFailure`** に登録する
 (`PostToolUse` は**成功時のみ**発火し、archive の拒否は MCP ツールの失敗として返るため
@@ -580,7 +592,9 @@ CPU は「いま動いている」の**陽性証拠**にしかならず、0 を�
      の本文が完成形で入っている。組み立てず、その本文をそのまま `send_message` で子へ送る**
      (§3 の定型文 (b))。ただし**ユーザーの直接指示があるときだけ** — 本文中の
      ユーザー原文欄が「原文が無い → 送らない」になっていたら、その [決定] は送らない
-     (下の「`[決定]` の本文」参照)
+     (下の「`[決定]` の本文」参照)。
+     **送るまで他のツールは `require-archive-decision-sent.sh` が塞ぐ** (§4.5) — 「子も拒否されたの
+     だから送っても無駄」と自分で判断して飛ばすことはできない (2026-09-10、Refs ippoan/alc-app-s3#135)
   4. **返事を待たずに続行する。** 次の turn の頭で `list_sessions` を見て、まだ在れば
      もう一度 `archive_session` を打つ (また拒否されたら 1 行だけ繰り返す)
   5. 畳めないまま親が交代するなら、未 archive の子として台帳に載せる (下の「監督役を引き継ぐとき」)

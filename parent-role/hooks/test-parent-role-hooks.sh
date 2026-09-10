@@ -306,6 +306,83 @@ check 79 E 'user-quotes.txt があるとき: 「送らない」の空欄メッ�
 rm -f "${HOME}/.claude/skills/report-to-parent/SKILL.md" "${HOME}/.claude/state/archive-refused/user-quotes.txt"
 
 echo
+echo "=== F. require-archive-decision-sent.sh (PreToolUse 全ツール。[決定] を送るまで口を塞ぐ — Refs ippoan/alc-app-s3#135) ==="
+F="${HERE}/require-archive-decision-sent.sh"
+AR="${HOME}/.claude/state/archive-refused"
+PENDING="${AR}/pending-${SID}"
+SENT="${AR}/sent-${SID}-local_child_1"
+# hook の本文は 2 スペース字下げで出る。そのまま貼られた形で通ることを見る
+DECISION_BODY='  [決定] ユーザー指示で self-archive — local_child_1 へ
+
+  親の archive_session がアプリに 2 回拒否されました。'
+send_payload() { # <session_id> <宛先> <message>
+  jq -nc --arg s "$1" --arg t "$2" --arg m "$3" \
+    '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__send_message",tool_input:{session_id:$t,message:$m}}'
+}
+tool_payload() { jq -nc --arg s "$1" --arg n "$2" '{session_id:$s,tool_name:$n,tool_input:{}}'; }
+with_quotes() { mkdir -p "$AR"; printf '2026-09-10 さっさとたため\n' > "${AR}/user-quotes.txt"; }
+exists() { if [ -e "$1" ]; then echo yes; else echo no; fi; }
+refuse() { run_err "$E" "$(archive_failure_payload "$SID" "$1" "$LIVE_WORK")" >/dev/null; }
+
+echo "--- F-a. pending を作る条件 ---"
+reset_markers; with_quotes
+refuse local_child_1
+check 80 F '(a) 1 回目の拒否では pending を作らない' no "$(exists "$PENDING")"
+refuse local_child_1
+check 81 F '(a) 2 回目の拒否で pending が作られる' yes "$(exists "$PENDING")"
+check 82 F '(a) pending の中身 = 対象の子 session_id 1 行' local_child_1 "$(cat "$PENDING" 2>/dev/null)"
+reset_markers
+refuse local_child_1; refuse local_child_1
+check 83 F '(a) user-quotes.txt が無い回は作らない (本文が「送らない」)' no "$(exists "$PENDING")"
+reset_markers; with_quotes
+refuse self; refuse self
+check 84 F '(a) self の拒否は作らない' no "$(exists "$PENDING")"
+
+echo "--- F-b. pending 中は塞ぐ / 状態確認と再試行は通す ---"
+reset_markers; with_quotes
+refuse local_child_1; refuse local_child_1
+check 85 F '(b) pending 中の Bash → deny' deny "$(decision "$(run "$F" "$(bash_payload "$SID" 'git status')")")"
+check 86 F '(b) pending 中の Write (repo 外でも) → deny' deny \
+  "$(decision "$(run "$F" "$(file_payload "$SID" "${SANDBOX}/outside/plan.md")")")"
+check 87 F '(b) pending 中の AskUserQuestion → deny' deny "$(decision "$(run "$F" "$(ask_payload "$SID")")")"
+check 88 F '(b) deny の理由に宛先の子 session_id が入る' yes \
+  "$(has "$(run "$F" "$(bash_payload "$SID" 'ls')")" 'send_message で local_child_1 へ')"
+check 89 F '(b) list_sessions → 許可' allow \
+  "$(decision "$(run "$F" "$(tool_payload "$SID" mcp__ccd_session_mgmt__list_sessions)")")"
+check 90 F '(b) archive_session → 許可 (再試行は妨げない)' allow \
+  "$(decision "$(run "$F" "$(tool_payload "$SID" mcp__ccd_session_mgmt__archive_session)")")"
+check 91 F '(b) ToolSearch → 許可 (deferred の send_message を読む手段)' allow \
+  "$(decision "$(run "$F" "$(tool_payload "$SID" ToolSearch)")")"
+
+echo "--- F-c. 宛先・見出しが違う send_message は塞ぐ ---"
+check 92 F '(c) 別の宛先への send_message → deny' deny \
+  "$(decision "$(run "$F" "$(send_payload "$SID" local_child_9 "$DECISION_BODY")")")"
+check 93 F '(c) 正しい宛先でも見出しが違う → deny' deny \
+  "$(decision "$(run "$F" "$(send_payload "$SID" local_child_1 '[報告] 子も拒否されたので送りません')")")"
+check 94 F '(c) deny の後も pending は残る' yes "$(exists "$PENDING")"
+
+echo "--- F-d. 正しい宛先・見出しの send_message で許可され pending が消える ---"
+check 95 F '(d) 正しい宛先・見出し (字下げ付きのまま) → 許可' allow \
+  "$(decision "$(run "$F" "$(send_payload "$SID" local_child_1 "$DECISION_BODY")")")"
+check 96 F '(d) 許可と同時に pending が消える' no "$(exists "$PENDING")"
+check 97 F '(d) 送信数 sent-<sid>-<子> = 1' 1 "$(cat "$SENT" 2>/dev/null)"
+check 98 F '(d) 消えた後の Bash は素通し' allow "$(decision "$(run "$F" "$(bash_payload "$SID" 'git status')")")"
+refuse local_child_1
+check 99 F '(d) 送信 1 通の後の拒否 → pending をもう一度作る (2 通目)' yes "$(exists "$PENDING")"
+run "$F" "$(send_payload "$SID" local_child_1 "$DECISION_BODY")" >/dev/null
+refuse local_child_1
+check 100 F '(d) 送信 2 通の後の拒否 → 作らない (3 通目は送らない — task-split §6)' no "$(exists "$PENDING")"
+
+echo "--- F-e. pending 無し / session_id 無しは素通し ---"
+reset_markers
+check 101 F '(e) pending 無し + Bash → 素通し' allow "$(decision "$(run "$F" "$(bash_payload "$SID" 'git commit -m x')")")"
+check 102 F '(e) session_id の無い payload → 素通し' allow \
+  "$(decision "$(run "$F" '{"tool_name":"Bash","tool_input":{"command":"ls"}}')")"
+with_quotes; refuse local_child_1; refuse local_child_1
+check 103 F '(e) 別 session_id (サブエージェント等) は pending を共有しない' allow \
+  "$(decision "$(run "$F" "$(bash_payload local_other_2 'ls')")")"
+
+echo
 echo "--- 実物の ~/.claude/state を汚していないことの確認 (HOME=$HOME) ---"
 find "${HOME}/.claude/state" -mindepth 1 | sed "s|^${HOME}|\$HOME|" | sort
 
