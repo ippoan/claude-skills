@@ -271,11 +271,16 @@ send_message は相手の処理中 turn が終わってから届き、返信が�
 
 ### サブエージェント経由は「穴」ではなく逃げ道 (オーナー判断 2026-09-05)
 
-hook は `session_id` を鍵にするので、**Agent tool のサブエージェントは別 session で走り
-親の marker を持たない** → B/C を素通しする。**これは塞がない。** 親が「書きたいもの」を
-抱えたときの正しい形が background の `Agent` だから — **親の turn が空くのでユーザーの指示に
-常に応答できる**。`task-surveyor` / `child-auditor` / `simplify-reviewer` はいずれも read-only で、
-marker を伝播させると**調査すらできなくなる**。**deliberate と accidental を分けるのが hook の役目。**
+hook は `session_id` を鍵にする。**Agent tool のサブエージェントの tool 呼び出しは、親と同じ
+`session_id` で hook に届く** (2026-09-10 実測: サブエージェントに Skill を 1 回呼ばせたら
+`~/.claude/state/skills-invoked/<親の session_id>` に行が増えた。サブエージェントの transcript の
+`sessionId` も親と同一。以前ここに「別 session で走り親の marker を持たない → B/C を素通しする」と
+書いていたのは誤り — Refs ippoan/alc-app-s3#135)。
+⇒ **親の marker はサブエージェントにも効く** — B/C はサブエージェントの repo 書き込み・commit も
+deny し、`require-archive-decision-sent.sh` の pending もサブエージェントのツールを塞ぐ。
+`task-surveyor` / `child-auditor` / `simplify-reviewer` はいずれも read-only なので B/C に当たらず、
+調査・裏取りはそのまま回る。親が抱えたものを background の `Agent` へ逃がす形は変わらない —
+**親の turn が空くのでユーザーの指示に常に応答できる**。**deliberate と accidental を分けるのが hook の役目。**
 
 ⇒ deny されたときの行き先は 3 つ (deny の文言にも書いてある):
 

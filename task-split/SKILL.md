@@ -352,11 +352,16 @@ compare API 1 発で裏を取る:
 
 ### サブエージェント経由は「穴」ではなく逃げ道 (オーナー判断 2026-09-05)
 
-hook は `session_id` を鍵にするので、**Agent tool のサブエージェントは別 session で走り
-親の marker を持たない** → B/C を素通しする。**これは塞がない。** 親が「書きたいもの」を
-抱えたときの正しい形が background の `Agent` だから — **親の turn が空くのでユーザーの指示に
-常に応答できる**。`task-surveyor` / `child-auditor` / `simplify-reviewer` はいずれも read-only で、
-marker を伝播させると**調査すらできなくなる**。**deliberate と accidental を分けるのが hook の役目。**
+hook は `session_id` を鍵にする。**Agent tool のサブエージェントの tool 呼び出しは、親と同じ
+`session_id` で hook に届く** (2026-09-10 実測: サブエージェントに Skill を 1 回呼ばせたら
+`~/.claude/state/skills-invoked/<親の session_id>` に行が増えた。サブエージェントの transcript の
+`sessionId` も親と同一。以前ここに「別 session で走り親の marker を持たない → B/C を素通しする」と
+書いていたのは誤り — Refs ippoan/alc-app-s3#135)。
+⇒ **親の marker はサブエージェントにも効く** — B/C はサブエージェントの repo 書き込み・commit も
+deny し、`require-archive-decision-sent.sh` の pending もサブエージェントのツールを塞ぐ。
+`task-surveyor` / `child-auditor` / `simplify-reviewer` はいずれも read-only なので B/C に当たらず、
+調査・裏取りはそのまま回る。親が抱えたものを background の `Agent` へ逃がす形は変わらない —
+**親の turn が空くのでユーザーの指示に常に応答できる**。**deliberate と accidental を分けるのが hook の役目。**
 
 ⇒ deny されたときの行き先は 3 つ (deny の文言にも書いてある):
 
@@ -594,7 +599,9 @@ CPU は「いま動いている」の**陽性証拠**にしかならず、0 を�
   子が「無い」と返したら下の手順に戻る。**「ユーザー操作待ち」で止まらない。**
   **子へメッセージを送った直後に打たない。子が止まるのを待つのは `session-archiver` を background で呼ぶ**
   (2026-09-10 の拒否 4 回はどれも send_message の直後。子が止まった後は 3 件とも 1 回で通った。
-  agent の拒否も親と同じ session_id で数えられるので、親が自分で打ち直す代わりに呼ぶ — [[parent-fanout]] §3.4)
+  **親は自分で打ち直す代わりに agent を呼ぶ** — agent の拒否も親と同じ session_id で数えられ、
+  親が先に打つと counter が進む。agent が 2 回待った後の拒否は本物の信号なので、そこから先は
+  下の手順 (§6 の [決定]) でよい — [[parent-fanout]] §3.4)
   1. **親の再試行は 1 回まで**。同じ拒否が 2 回続いたら、この turn では打ち続けない
   2. ユーザーに **3 択を 1 行で**知らせる — 子のタブを閉じる / **サイドバーから archive する** /
      子のタブに直接「畳んで」と打つ (子は自分のタブへの直接入力なら畳む — §3 の定型文 (c))。
