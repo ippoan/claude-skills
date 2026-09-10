@@ -50,7 +50,7 @@ reason="親 (監督) セッションは repo を直接書けません (${repo} �
 逃げ道は 3 つあります:
  1. **repo の変更 (PR になるもの)** → spawn_task でチップにする。worktree・branch・CI が付き、所有権も分かれます
  2. **repo 外の成果物 (計画・PR 本文・issue 本文・memory)** → そのまま書けます (scratchpad / ~/.claude/projects/*/memory / /tmp は許可)
- 3. 調査・裏取り → Agent を run_in_background: true で起動する (read-only の調査・裏取りは回る)。**サブエージェントも親と同じ session_id で hook に届くので、repo への書き込みはサブエージェント経由でも塞がれる。repo の変更は 1. の spawn_task へ**
+ 3. 調査・裏取り → Agent を run_in_background: true で起動する (read-only の調査・裏取りは回る)。**サブエージェントも親と同じ session_id で hook に届くので、repo への書き込みはサブエージェント経由でも塞がれるはず (deny そのものは未実測)。repo の変更は 1. の spawn_task へ**
 どうしても親が直接書く必要があるなら touch ${PARENT_DIR}/${sid_safe}.override (終わったら消すこと)。"
 
 jq -nc --arg r "$reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
