@@ -11,7 +11,7 @@
 | `hooks/block-parent-repo-writes.sh` | PreToolUse `Edit` / `Write` / `NotebookEdit` | 親の repo 書き込みを deny (main clone も worktree も) |
 | `hooks/block-parent-commits.sh` | PreToolUse `Bash` | 親の `git commit` / `push` / `apply` / `am` / `cherry-pick` を deny |
 | `hooks/block-child-asks-user.sh` | PreToolUse `AskUserQuestion` | 子のユーザーへの直接質問を deny |
-| `hooks/warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗 — Refs #163) | 親の archive が「pinned or in use」で拒否された瞬間に、task-split §6 の次の一手 (1 回目 = 再試行 1 回まで / 2 回目以降 = 3 択を 1 行で知らせる → **ユーザーの原文を貼った** `[決定]` を子へ送る → 待たずに続行) を出す。**塞がない** |
+| `hooks/warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗 — Refs #163) | 親の archive が「was not archived」で拒否された瞬間 (**文言は問わない** — pinned でも live work でも同じ、Refs #167) に、task-split §6 の次の一手を出す。1 回目 = 再試行 1 回まで / 2 回目以降 = **`[決定] ユーザー指示で self-archive` の本文を完成形で出す** (拒否文言の原文・基準 3 点・`user-quotes.txt` の原文・report-to-parent 例外 (b) の条文を実行時抽出まで埋め、親が埋めるのは PR 番号だけ)。**塞がない** |
 | `hooks/test-parent-role-hooks.sh` | — | 受け入れテスト。`HOME` を一時ディレクトリへ差し替えて回す |
 
 ```bash
