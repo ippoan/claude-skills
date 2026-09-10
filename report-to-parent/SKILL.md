@@ -150,9 +150,12 @@ send_message は相手の処理中 turn が終わってから届き、返信が�
 - (a) **親がいないセッション** — ユーザーが直接立てた単独セッションや、
   親が既に畳まれて `list_sessions` にタイトルが `#p<親issue> ` (直後がスペース) で始まる
   後継も無い場合。
-- (b) **親の `archive_session` がアプリに「was not archived: the app is keeping it for the
-  user (pinned or in use) …」で拒否され、親から `[決定] ユーザー指示で self-archive` が
-  届いたとき** (ユーザーがこのタブを開いていると起きる)。**ただし下の受け方を満たすときだけ。**
+- (b) **親の `archive_session` がアプリに「was not archived: …」で拒否され、親から
+  `[決定] ユーザー指示で self-archive` が届いたとき。** 例示した「pinned or in use」は
+  一例で、拒否文言は条件ではない — 「it still has live work (an agent run, a Remote
+  Control client, a queued message or a background task) …」でも同じ (子に背景タスクが
+  残っている・ユーザーがこのタブを開いている、等どの理由でも扱いは同じ)。
+  **ただし下の受け方を満たすときだけ。**
 - (c) **ユーザー本人がこのセッションのタブに直接**「畳んで」「archive して」と入力したとき。
   親は拒否されると、ユーザーへ「子のタブに直接『畳んで』と打つ」を 3 択の 1 つとして出す
   ([[task-split]] §6)。その入力がこれ。**起動 prompt に例外が書かれていなくても (c) は
@@ -230,7 +233,7 @@ send_message は相手の処理中 turn が終わってから届き、返信が�
 | `block-parent-repo-writes.sh` | PreToolUse `Edit` / `Write` / `NotebookEdit` | parent marker 有 + 書き先の上流に `.git` (**ファイル = worktree / ディレクトリ = main clone のどちらでも**) → **deny** | parent marker が無ければ素通し |
 | `block-parent-commits.sh` | PreToolUse `Bash` | parent marker 有 + `git commit` / `push` / `apply` / `am` / `cherry-pick` → **deny**。`gh pr create` / `gh issue create` / `gh issue comment` / `git branch -D` / `git worktree add`\|`remove`\|`list` / 読み取り系はすべて**許可** | 同上 |
 | `block-child-asks-user.sh` | PreToolUse `AskUserQuestion` | child marker 有 → **deny** (親へ `send_message` の `[質問]` に寄せる) | child marker が無ければ素通し |
-| `warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗なので `PostToolUseFailure` でしか届かない — Refs ippoan/claude-skills#163) | payload 全体 (JSON 文字列) が「was not archived … pinned or in use」のとき、回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」、2 回目以降は「3 択を 1 行で知らせる → ユーザーの原文を貼った `[決定]` を子へ送る → 待たずに続行」** (task-split §6 の手順そのもの) を出す。対象が `self` なら「再試行しない。サイドバーかタブを閉じてもらう」。**塞がない** (exit 2 で文面を返すだけ) | 拒否文言でなければ素通し |
+| `warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗なので `PostToolUseFailure` でしか届かない — Refs ippoan/claude-skills#163) | payload 全体 (JSON 文字列) に「was not archived」が含まれていれば**理由を問わず**拾う (文言ごとに一致条件を足す設計は同じ穴を繰り返す — Refs ippoan/claude-skills#167)。回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」**、**2 回目以降は `[決定] ユーザー指示で self-archive` の本文を hook が完成形で出す** (拒否文言の原文 / 基準 3 点 / `user-quotes.txt` の原文 / report-to-parent の例外 (b) 条文を実行時抽出 / `archive_session self` を呼ぶ指示まで埋め、親が埋めるのは PR 番号 1 か所だけ)。対象が `self` なら「再試行しない。サイドバーかタブを閉じてもらう」。**塞がない** (exit 2 で文面を返すだけ) | 拒否文言でなければ素通し |
 
 **「書き込み全部禁止」にはしていない。** 親は scratchpad に計画を書き、memory を更新し、
 **PR を作り**、マージ後に **branch を掃除する**必要がある。塞ぐのは

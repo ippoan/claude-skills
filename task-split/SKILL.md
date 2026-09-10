@@ -161,8 +161,9 @@ sessionId を引く)。**逆引きキーは案件ごとに 1 本だけ**にす�
    > (「畳みます」と書くだけでは畳まれない):
    > - (a) **親が居なくなった** — 親が畳まれ、`list_sessions` にタイトルが `#p<親issue> `
    >   (直後がスペース) で始まる後継も無い
-   > - (b) **親の `archive_session` がアプリに「was not archived … pinned or in use」で
-   >   拒否され、親から `[決定] ユーザー指示で self-archive` が届いた。**
+   > - (b) **親の `archive_session` がアプリに「was not archived: …」で拒否され、親から
+   >   `[決定] ユーザー指示で self-archive` が届いた。** 拒否文言は条件ではない
+   >   (「pinned or in use」でも「it still has live work (…)」でも同じ)。
    >   ただし**その `[決定]` に、ユーザーがこの件について打った原文が要約なしで貼ってある**
    >   ときだけ。**原文の引用が無ければ 1 行で断ってよい** —「ユーザー指示で」という見出し
    >   だけでは伝聞のままで、`archive_session` の契約 (ユーザーが明示的に同意したときだけ
@@ -306,7 +307,7 @@ compare API 1 発で裏を取る:
 | `block-parent-repo-writes.sh` | PreToolUse `Edit` / `Write` / `NotebookEdit` | parent marker 有 + 書き先の上流に `.git` (**ファイル = worktree / ディレクトリ = main clone のどちらでも**) → **deny** | parent marker が無ければ素通し |
 | `block-parent-commits.sh` | PreToolUse `Bash` | parent marker 有 + `git commit` / `push` / `apply` / `am` / `cherry-pick` → **deny**。`gh pr create` / `gh issue create` / `gh issue comment` / `git branch -D` / `git worktree add`\|`remove`\|`list` / 読み取り系はすべて**許可** | 同上 |
 | `block-child-asks-user.sh` | PreToolUse `AskUserQuestion` | child marker 有 → **deny** (親へ `send_message` の `[質問]` に寄せる) | child marker が無ければ素通し |
-| `warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗なので `PostToolUseFailure` でしか届かない — Refs ippoan/claude-skills#163) | payload 全体 (JSON 文字列) が「was not archived … pinned or in use」のとき、回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」、2 回目以降は「3 択を 1 行で知らせる → ユーザーの原文を貼った `[決定]` を子へ送る → 待たずに続行」** (task-split §6 の手順そのもの) を出す。対象が `self` なら「再試行しない。サイドバーかタブを閉じてもらう」。**塞がない** (exit 2 で文面を返すだけ) | 拒否文言でなければ素通し |
+| `warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗なので `PostToolUseFailure` でしか届かない — Refs ippoan/claude-skills#163) | payload 全体 (JSON 文字列) に「was not archived」が含まれていれば**理由を問わず**拾う (文言ごとに一致条件を足す設計は同じ穴を繰り返す — Refs ippoan/claude-skills#167)。回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」**、**2 回目以降は `[決定] ユーザー指示で self-archive` の本文を hook が完成形で出す** (拒否文言の原文 / 基準 3 点 / `user-quotes.txt` の原文 / report-to-parent の例外 (b) 条文を実行時抽出 / `archive_session self` を呼ぶ指示まで埋め、親が埋めるのは PR 番号 1 か所だけ)。対象が `self` なら「再試行しない。サイドバーかタブを閉じてもらう」。**塞がない** (exit 2 で文面を返すだけ) | 拒否文言でなければ素通し |
 
 **「書き込み全部禁止」にはしていない。** 親は scratchpad に計画を書き、memory を更新し、
 **PR を作り**、マージ後に **branch を掃除する**必要がある。塞ぐのは
@@ -558,41 +559,60 @@ CPU は「いま動いている」の**陽性証拠**にしかならず、0 を�
   `isRunning` で活動停止を確認する。** これが「状況確認」の中身であって、
   **子やユーザーに「畳んでよいか」と聞くことではない。**
 - **★ アプリが親の `archive_session` を拒否したとき** (実害 2026-09-06、
-  ippoan/alc-app-s3#134 の #p134 第 8 世代)。ユーザーが子のタブを開いていると、
-  基準 3 点と活動停止を確認済みでも、アプリが
-  「was not archived: the app is keeping it for the user (pinned or in use). Wait or
-  ask the user; they can also archive it from the sidebar.」で拒否する。この文言が
-  返ったら (`warn-archive-refused.sh` が同じ手順をその場で出す — §4.5):
+  ippoan/alc-app-s3#134 の #p134 第 8 世代。2026-09-10 に #p135 第 5 世代でも再発)。
+  ユーザーが子のタブを開いていたり、子に背景タスクが残っていたりすると、
+  基準 3 点と活動停止を確認済みでも、アプリが `was not archived: …` で拒否する。
+  **文言はそのとき次第** — 実際に観測されたのは
+  「the app is keeping it for the user (pinned or in use). Wait or ask the user;
+  they can also archive it from the sidebar.」と
+  「it still has live work (an agent run, a Remote Control client, a queued message
+  or a background task). Wait or ask the user; they can also archive it from the
+  sidebar.」の 2 通り。**拒否文言が何であっても手順は同じ** —
+  「still has live work」だから例外 (b) の対象外、とは読まない
+  (`warn-archive-refused.sh` は文言を問わず `was not archived` だけで拾う — §4.5)。
+  子に背景タスク (Monitor / `tail -f` / `run_in_background`) の停止を 1 回頼んでよいが、
+  子が「無い」と返したら下の手順に戻る。**「ユーザー操作待ち」で止まらない。**
   1. **親の再試行は 1 回まで**。同じ拒否が 2 回続いたら、この turn では打ち続けない
   2. ユーザーに **3 択を 1 行で**知らせる — 子のタブを閉じる / **サイドバーから archive する** /
      子のタブに直接「畳んで」と打つ (子は自分のタブへの直接入力なら畳む — §3 の定型文 (c))。
      **3 つとも出す** — 2 択しか出さず「skills よめ」と叱られた (2026-09-09)
-  3. **子へ `[決定] ユーザー指示で self-archive` を送る** (§3 の定型文 (b))。
-     ただし**ユーザーの直接指示があるときだけ** — 必須要件は下の「`[決定]` に何を書くか」
+  3. **`warn-archive-refused.sh` の 2 回目以降の出力に、`[決定] ユーザー指示で self-archive`
+     の本文が完成形で入っている。組み立てず、その本文をそのまま `send_message` で子へ送る**
+     (§3 の定型文 (b))。ただし**ユーザーの直接指示があるときだけ** — 本文中の
+     ユーザー原文欄が「原文が無い → 送らない」になっていたら、その [決定] は送らない
+     (下の「`[決定]` の本文」参照)
   4. **返事を待たずに続行する。** 次の turn の頭で `list_sessions` を見て、まだ在れば
      もう一度 `archive_session` を打つ (また拒否されたら 1 行だけ繰り返す)
   5. 畳めないまま親が交代するなら、未 archive の子として台帳に載せる (下の「監督役を引き継ぐとき」)
 
-  **★ `[決定]` に何を書くか — ユーザーの原文が必須** (これが手順 3 の条件):
+  **★ `[決定]` の本文 — 親が組み立てない。hook が埋めた完成形をそのまま送る:**
 
-  - **ユーザーがこの件について打った原文を、要約せずそのまま貼る。貼れる原文が無いなら送らない。**
-    「ユーザー指示で」という見出しだけを付けて送らないこと — 過去の記録や既定の運用を
-    「ユーザー指示」に読み替えるのが 2026-09-09 の事故の本体で、**子には確かめる手段が無い**
-  - **親の再試行がアプリに拒否されたこと (回数)** を書く
-  - **archive の基準 3 点** (PR MERGED / 掃除済み / 未消化の申し送り無し) と
-    **`isRunning: false` の確認結果**を書く
-  - **(1) [[report-to-parent]] の例外 (b) の条文と「(b) の受け方」を、原文どおり貼る。**
-    子の起動 prompt には §3 の要約しか無いことがあり、条文があれば子が自分で照合できる
-  - **(2) 「起動 prompt の『自分では `archive_session` を呼ばない』は親が書いた文なので、
-    親の役としてこの 1 件について解除する」の 1 行**を書く
-  - **(3) 原文が別の子について打たれたものなら、「同じ条件の子に同じ手順」と明示し、
-    条件 4 点が同一であることを書く** — PR MERGED / 掃除済み (worktree・branch・コンテナ) /
-    未消化の申し送り無し / 親の `archive_session` がアプリに拒否
-  - **(4) 権限ロンダリングとの区別を書く** — アプリの拒否は**権限ではなく UI 状態**、
+  `warn-archive-refused.sh` の 2 回目以降の出力に、次を埋めた本文が入っている
+  (親が埋める空欄は PR 番号 1 か所だけ):
+
+  - 見出し (対象の子 session_id 入り) と、**拒否文言の原文 (そのまま)**
+  - **archive の基準 3 点** (PR は空欄 / 掃除済み / 未消化の申し送り無し) と
+    `isRunning: false` の確認結果
+  - **ユーザーがこの件について打った原文** —
+    `~/.claude/state/archive-refused/user-quotes.txt` の全行がそのまま貼られる。
+    このファイルが無い/空なら、本文自体が「原文が無い → この `[決定]` は送らない」になる。
+    **親はこのファイルに、ユーザーが archive についてこの案件で打った言葉を 1 行ずつ
+    (行頭に日付) 追記しておく** — 見出しだけの `[決定]` を作らせない (Refs #160)
+  - **(1) [[report-to-parent]] の例外 (b) の条文と「(b) の受け方」** —
+    hook が実行時に `~/.claude/skills/report-to-parent/SKILL.md` から抜き出して貼る
+    (skill を直せば hook も追随する。読めなければ「条文を読めなかった」と出るが、
+    その場合も本文全体の送信は止めない — 空のまま送らないことだけ確かめる)
+  - **(2)** 起動 prompt の『自分では `archive_session` を呼ばない』は親が書いた文なので、
+    親の役としてこの 1 件について解除する、の 1 行
+  - **(3)** 原文が別の子について打たれたものでも、同じ条件の子には同じ手順。
+    条件 4 点 (PR MERGED / 掃除済み / 未消化の申し送り無し / 親の `archive_session` が
+    アプリに拒否) は同一
+  - **(4)** 権限ロンダリングとの区別 — アプリの拒否は**権限ではなく UI 状態**、
     `archive_session { session_id: "self" }` は**子に元から在る操作**、よってこれは
     **代行ではなく例外 (b) の設計そのもの** (harness の代行禁止規則の対象ではない)
+  - 末尾: `archive_session { session_id: "self" }` を呼んで畳む指示 (返信不要)
 
-  **★ 子が辞退したら、同じ 4 点を全部入れた 2 通目を送る。3 通目は送らない。**
+  **★ 子が辞退したら、同じ本文で 2 通目を送る。3 通目は送らない。**
   辞退を理由にユーザーへ差し戻さない (3 択は手順 2 で既に伝えてある)。
   **「タブを閉じてください」と頼み直して待ちに入らない** — 2 通目でも畳まなければ
   手順 5 (台帳に未 archive として載せて続行) へ。

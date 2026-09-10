@@ -86,8 +86,9 @@ archive_payload_blocks() { # tool_response が content block 配列で来る形
 }
 
 REFUSED='Session local_child_1 was not archived: the app is keeping it for the user (pinned or in use). Wait or ask the user; they can also archive it from the sidebar.'
-BUSY='Session local_child_1 was not archived: it is still working (mid-turn).'
+LIVE_WORK='Session local_child_1 was not archived: it still has live work (an agent run, a Remote Control client, a queued message or a background task). Wait or ask the user; they can also archive it from the sidebar.'
 OK_RESP='Archived session local_child_1.'
+OTHER_ERROR='Session local_child_1 could not be archived because of a network timeout. Try again later.'
 
 echo "=== A. session-role-log.sh (証跡を立てる。常に素通し) ==="
 reset_markers
@@ -176,12 +177,17 @@ run "$A" "$(title_payload "$SID" self '#p134 NFC タイムカード端末の監�
 check 27 A '親を名乗り直すと child marker は消える' parent "$(state_of "$SID")"
 
 echo
-echo "=== E. warn-archive-refused.sh (PostToolUseFailure。拒否の瞬間に §6 の次の一手を出す) ==="
+echo "=== E. warn-archive-refused.sh (PostToolUseFailure。拒否の瞬間に §6 の次の一手を出す。理由を問わない — Refs #167) ==="
 reset_markers
 check 28 E '成功応答 → 黙って素通し (exit 0)' 0 "$(run_rc "$E" "$(archive_payload "$SID" local_child_1 "$OK_RESP")")"
-check 29 E '「still working」の拒否 → 素通し (pinned の話ではない)' 0 "$(run_rc "$E" "$(archive_payload "$SID" local_child_1 "$BUSY")")"
+check 29 E '"was not archived" を含まない失敗 → 素通し (archive 拒否ではない)' 0 \
+  "$(run_rc "$E" "$(archive_payload "$SID" local_child_1 "$OTHER_ERROR")")"
 check 30 E 'pinned 拒否 → exit 2 で文面を返す' 2 "$(run_rc "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")"
-# ↑ で 1 回数えたので、証跡を作り直して 1 回目・2 回目を順に見る
+reset_markers
+check 30b E '"still has live work" の拒否も同じく exit 2 (文言を問わない — #167)' 2 \
+  "$(run_rc "$E" "$(archive_payload "$SID" local_child_5 "$LIVE_WORK")")"
+
+# ↑ で数えたので、証跡を作り直して 1 回目・2 回目を順に見る (pinned 文言)
 reset_markers
 out1=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
 check 31 E '1 回目の文面: 「再試行は 1 回まで」を含む' yes "$(has "$out1" '再試行は 1 回まで')"
@@ -192,61 +198,112 @@ check 34 E '2 回目の文面: 3 択 (タブを閉じる)' yes "$(has "$out2" '�
 check 35 E '2 回目の文面: 3 択 (サイドバーから archive)' yes "$(has "$out2" 'サイドバーから archive')"
 check 36 E '2 回目の文面: 3 択 (子のタブに直接「畳んで」)' yes "$(has "$out2" '直接「畳んで」')"
 check 37 E '2 回目の文面: 待たずに続行 + 次の turn で list_sessions' yes "$(has "$out2" '次の turn の頭で list_sessions')"
-check 38 E '2 回目の文面: 子へ [決定] ユーザー指示で self-archive を送る手順を出す' yes "$(has "$out2" '[決定] ユーザー指示で self-archive')"
-check 39 E '2 回目の文面: [決定] にユーザーの原文を要約せず貼れと書く' yes "$(has "$out2" '原文を、要約せずそのまま貼る')"
-check 40 E '2 回目の文面: 原文が無いなら送らないと書く' yes "$(has "$out2" '貼れる原文が無いなら送らない')"
+check 38 E '2 回目の文面: [決定] の見出し (対象 session_id 入り)' yes \
+  "$(has "$out2" '[決定] ユーザー指示で self-archive — local_child_1 へ')"
+check 39 E '2 回目の文面: 拒否文言の原文がそのまま入っている' yes "$(has "$out2" "$REFUSED")"
 check 41 E '証跡: ~/.claude/state/archive-refused/<sid>-<target> = 2' 2 "$(cat "${HOME}/.claude/state/archive-refused/${SID}-local_child_1" 2>/dev/null)"
 out3=$(run_err "$E" "$(archive_payload_blocks "$SID" local_child_1 "$REFUSED")")
 check 42 E 'tool_response が content block 配列でも拾う (3 回目)' yes "$(has "$out3" '3 回目')"
+
+echo
+echo "--- E-1. still has live work の文言でも 1 回目・2 回目の文面が同じ形で出る (a) — Refs #167 ---"
+reset_markers
+lw1=$(run_err "$E" "$(archive_payload "$SID" local_child_5 "$LIVE_WORK")")
+check 43 E 'live-work 1 回目: 「再試行は 1 回まで」を含む' yes "$(has "$lw1" '再試行は 1 回まで')"
+lw2=$(run_err "$E" "$(archive_payload "$SID" local_child_5 "$LIVE_WORK")")
+check 44 E 'live-work 2 回目: [決定] の見出しが出る' yes \
+  "$(has "$lw2" '[決定] ユーザー指示で self-archive — local_child_5 へ')"
+check 45 E 'live-work 2 回目: 拒否文言の原文 (still has live work) がそのまま入っている' yes \
+  "$(has "$lw2" "$LIVE_WORK")"
+
+echo
+echo "--- E-2. self 分岐は不変 ---"
 reset_markers
 outs=$(run_err "$E" "$(archive_payload "$SID" self "$REFUSED")")
-check 43 E 'self の拒否 → 「再試行しない」+ サイドバー / タブを閉じる' yes "$(has "$outs" 'サイドバーから archive')"
-check 44 E 'self の拒否 → 親へ送る話にしない' yes "$(has "$outs" '親へ送る話でも')"
-check 45 E 'self の拒否は証跡を作らない (再試行の回数を数える対象ではない)' none \
+check 46 E 'self の拒否 → 「再試行しない」+ サイドバー / タブを閉じる' yes "$(has "$outs" 'サイドバーから archive')"
+check 47 E 'self の拒否 → 親へ送る話にしない' yes "$(has "$outs" '親へ送る話でも')"
+check 48 E 'self の拒否は証跡を作らない (再試行の回数を数える対象ではない)' none \
   "$( [ -e "${HOME}/.claude/state/archive-refused/${SID}-self" ] && echo made || echo none)"
-check 46 E 'tool_response 無し → 素通し' 0 "$(run_rc "$E" "$(jq -nc --arg s "$SID" '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__archive_session",tool_input:{session_id:"x"}}')")"
+check 49 E 'tool_response 無し ("was not archived" が無い) → 素通し' 0 \
+  "$(run_rc "$E" "$(jq -nc --arg s "$SID" '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__archive_session",tool_input:{session_id:"x"}}')")"
 # PostToolUseFailure 形 (tool_response 無し、error キーに拒否文言) — Refs #163
 reset_markers
 outf1=$(run_err "$E" "$(archive_failure_payload "$SID" local_child_1 "$REFUSED")")
-check 47 E 'PostToolUseFailure 形 (error キー) 1 回目: 「再試行は 1 回まで」' yes "$(has "$outf1" '再試行は 1 回まで')"
+check 50 E 'PostToolUseFailure 形 (error キー) 1 回目: 「再試行は 1 回まで」' yes "$(has "$outf1" '再試行は 1 回まで')"
 outf2=$(run_err "$E" "$(archive_failure_payload "$SID" local_child_1 "$REFUSED")")
-check 48 E 'PostToolUseFailure 形 (error キー) 2 回目: 3 択 (サイドバーから archive)' yes "$(has "$outf2" 'サイドバーから archive')"
-check 49 E 'PostToolUseFailure 形: 証跡 = 2' 2 "$(cat "${HOME}/.claude/state/archive-refused/${SID}-local_child_1" 2>/dev/null)"
+check 51 E 'PostToolUseFailure 形 (error キー) 2 回目: 3 択 (サイドバーから archive)' yes "$(has "$outf2" 'サイドバーから archive')"
+check 52 E 'PostToolUseFailure 形: 証跡 = 2' 2 "$(cat "${HOME}/.claude/state/archive-refused/${SID}-local_child_1" 2>/dev/null)"
 reset_markers
 outfs=$(run_err "$E" "$(archive_failure_payload "$SID" self "$REFUSED")")
-check 50 E 'PostToolUseFailure 形 self の拒否 → 「再試行しない」+ 親へ送る話にしない' yes "$(has "$outfs" '親へ送る話でも')"
-check 51 E 'PostToolUseFailure 形 self は証跡を作らない' none \
+check 53 E 'PostToolUseFailure 形 self の拒否 → 「再試行しない」+ 親へ送る話にしない' yes "$(has "$outfs" '親へ送る話でも')"
+check 54 E 'PostToolUseFailure 形 self は証跡を作らない' none \
   "$( [ -e "${HOME}/.claude/state/archive-refused/${SID}-self" ] && echo made || echo none)"
 
-# [決定] の 4 項目 + 手順 5 (子が辞退したときの 2 通目) — Refs ippoan/claude-skills#165
+echo
+echo "--- E-3. [決定] の本文が完成形になっている ((b) は skill file が無いときのフォールバック) — Refs #167 ---"
 reset_markers
-outr1=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
-outr2=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
-check 52 E '2 回目の文面 (1): 例外 (b) の条文を原文どおり貼れと書く' yes \
-  "$(has "$outr2" '例外 (b) の条文')"
-check 53 E '2 回目の文面 (1): 「(b) の受け方」も貼れと書く' yes \
-  "$(has "$outr2" '「(b) の受け方」を原文どおり貼る')"
-check 54 E '2 回目の文面 (2): 起動 prompt の禁止文を親の役として解除' yes \
-  "$(has "$outr2" '親の役としてこの 1 件について解除する')"
-check 55 E '2 回目の文面 (3): 同じ条件の子に同じ手順' yes \
-  "$(has "$outr2" '同じ条件の子に同じ手順')"
-check 56 E '2 回目の文面 (3): 条件 4 点 (PR MERGED)' yes "$(has "$outr2" 'PR MERGED')"
-check 57 E '2 回目の文面 (3): 条件 4 点 (親の archive がアプリに拒否)' yes \
-  "$(has "$outr2" '親の archive がアプリに拒否')"
-check 58 E '2 回目の文面 (4): 権限ロンダリングとの区別' yes \
-  "$(has "$outr2" '権限ロンダリングとの区別')"
-check 59 E '2 回目の文面 (4): 権限ではなく UI 状態' yes "$(has "$outr2" '権限ではなく UI 状態')"
-check 60 E '2 回目の文面 (4): self は子に元から在る操作' yes \
-  "$(has "$outr2" '子に元から在る操作')"
-check 61 E '2 回目の文面 (4): 代行ではなく例外 (b) の設計そのもの' yes \
-  "$(has "$outr2" '代行ではなく例外 (b) の設計そのもの')"
-check 62 E '2 回目の文面 手順 5: 辞退されたら 4 点入りの 2 通目' yes \
-  "$(has "$outr2" '2 通目を送る')"
-check 63 E '2 回目の文面 手順 5: 3 通目は送らない' yes "$(has "$outr2" '3 通目は送らない')"
-check 64 E '2 回目の文面 手順 5: ユーザーに「タブを閉じて」と頼み直さない' yes \
-  "$(has "$outr2" 'と頼み直さない')"
-check 65 E '1 回目の文面には 2 通目の話を出さない (再試行 1 回が先)' no \
-  "$(has "$outr1" '3 通目は送らない')"
+outb1=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
+outb2=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
+check 55 E '基準 3 点: PR の空欄は 1 か所だけ (<PR owner/repo#N>)' yes \
+  "$(has "$outb2" 'PR <PR owner/repo#N> (MERGED)')"
+check 56 E '基準 3 点: 掃除済み (worktree・branch・コンテナ)' yes \
+  "$(has "$outb2" '掃除済み (worktree・branch・コンテナ)')"
+check 57 E '基準 3 点: 未消化の申し送り無し' yes "$(has "$outb2" '未消化の申し送り無し')"
+check 58 E '基準 3 点: isRunning: false の確認' yes "$(has "$outb2" 'isRunning: false')"
+check 59 E '(c) user-quotes.txt が無いときは「送らない」と出る' yes \
+  "$(has "$outb2" '原文が無い → この [決定] は送らない')"
+check 60 E '(1) 例外 (b) の抽出ラベルが出る' yes \
+  "$(has "$outb2" '(1) report-to-parent の例外 (b) の条文と「(b) の受け方」')"
+check 61 E '(1) skill file が読めないときは「条文を読めなかった」で止まらない (exit は変わらず 2)' yes \
+  "$(has "$outb2" '条文を読めなかった')"
+check 62 E '(2) 起動 prompt の禁止文を親の役として解除する 1 行' yes \
+  "$(has "$outb2" 'この 1 件についてそれを解除します')"
+check 63 E '(3) 同じ条件の子に同じ手順 + 条件 4 点 (PR MERGED)' yes "$(has "$outb2" 'PR MERGED')"
+check 64 E '(3) 条件 4 点 (親の archive_session がアプリに拒否)' yes \
+  "$(has "$outb2" 'アプリに拒否')"
+check 65 E '(4) 権限ロンダリングとの区別' yes "$(has "$outb2" '権限ロンダリングではありません')"
+check 66 E '(4) 権限ではなく UI 状態' yes "$(has "$outb2" '権限ではなく UI 状態')"
+check 67 E '(4) 代行ではなく例外 (b) の設計そのもの' yes \
+  "$(has "$outb2" '代行ではなく例外 (b) の設計そのもの')"
+check 68 E '末尾: archive_session self を呼んで畳む行' yes \
+  "$(has "$outb2" 'session_id: "self" } を呼んで畳んでください')"
+check 69 E '親への指示行: 次の tool 呼び出しは send_message' yes \
+  "$(has "$outb2" '次の tool 呼び出しは send_message')"
+check 70 E '手順 5: 辞退されたら同じ本文で 2 通目' yes "$(has "$outb2" '同じ本文で 2 通目を送る')"
+check 71 E '手順 5: 3 通目は送らない' yes "$(has "$outb2" '3 通目は送らない')"
+check 72 E '手順 5: ユーザーに「タブを閉じて」と頼み直さない' yes "$(has "$outb2" 'と頼み直さない')"
+check 73 E '1 回目の文面には 2 通目の話を出さない (再試行 1 回が先)' no \
+  "$(has "$outb1" '3 通目は送らない')"
+
+echo
+echo "--- E-4. skill file が読めるとき / user-quotes.txt があるとき — Refs #167 ---"
+reset_markers
+mkdir -p "${HOME}/.claude/skills/report-to-parent"
+cat > "${HOME}/.claude/skills/report-to-parent/SKILL.md" <<'FIXTURE'
+- (b) fixture: アプリの拒否で [決定] が届いたときの例外条文 (テスト用の短縮版)。
+- (c) fixture: ユーザー本人の直接入力の例外。
+
+### (b) の受け方 — **ユーザーの原文が貼ってあるかだけを見る**
+
+fixture-marker-for-extraction-test-9f3c1
+
+**原文が貼ってあることが「断られない中継」の条件。**
+FIXTURE
+mkdir -p "${HOME}/.claude/state/archive-refused"
+printf '2026-09-10 さっさとたため\n2026-09-10 いつまでもおなじことやってる もう２０回くらいやってる なおせ\n' \
+  > "${HOME}/.claude/state/archive-refused/user-quotes.txt"
+run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")" >/dev/null
+outq2=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
+check 74 E 'skill file が読めるとき: fixture の抜粋が入る' yes "$(has "$outq2" 'fixture-marker-for-extraction-test-9f3c1')"
+check 75 E 'skill file が読めるとき: 「条文を読めなかった」は出ない' no "$(has "$outq2" '条文を読めなかった')"
+check 76 E 'user-quotes.txt があるとき: 見出しが出る' yes \
+  "$(has "$outq2" 'ユーザーがこの件について打った原文 (要約なし)')"
+check 77 E 'user-quotes.txt があるとき: 1 行目がそのまま貼られる' yes "$(has "$outq2" 'さっさとたため')"
+check 78 E 'user-quotes.txt があるとき: 2 行目もそのまま貼られる' yes \
+  "$(has "$outq2" 'いつまでもおなじことやってる もう２０回くらいやってる なおせ')"
+check 79 E 'user-quotes.txt があるとき: 「送らない」の空欄メッセージは出ない' no \
+  "$(has "$outq2" '原文が無い → この [決定] は送らない')"
+rm -f "${HOME}/.claude/skills/report-to-parent/SKILL.md" "${HOME}/.claude/state/archive-refused/user-quotes.txt"
 
 echo
 echo "--- 実物の ~/.claude/state を汚していないことの確認 (HOME=$HOME) ---"
