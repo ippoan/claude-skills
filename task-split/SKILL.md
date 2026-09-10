@@ -557,6 +557,7 @@ CPU は「いま動いている」の**陽性証拠**にしかならず、0 を�
   2. **子がまだ動いていないこと**を `list_sessions` の `lastActivityAt` / `isRunning` で見る
      (子は `[完了]` 後に自発的な精査を続けることがある。実害 2026-07-31)
   3. **親が `archive_session` を打つ**
+     — **子へメッセージを送った直後に打たない。子が止まるのを待つのは `session-archiver` を background で呼ぶ** ([[parent-fanout]] §3.4)
 
   **★ 「アプリの Auto-archive on PR close に任せる」と判断しないこと** (2026-08-22 の実害)。
   設定が効いていても、**親が状況を確認して畳むのがユーザーの指示**。自動で畳まれた結果を
@@ -586,11 +587,14 @@ CPU は「いま動いている」の**陽性証拠**にしかならず、0 を�
   they can also archive it from the sidebar.」と
   「it still has live work (an agent run, a Remote Control client, a queued message
   or a background task). Wait or ask the user; they can also archive it from the
-  sidebar.」の 2 通り。**拒否文言が何であっても手順は同じ** —
+  sidebar.」と「it is still working (a turn in progress)」の 3 通り。**拒否文言が何であっても手順は同じ** —
   「still has live work」だから例外 (b) の対象外、とは読まない
   (`warn-archive-refused.sh` は文言を問わず `was not archived` だけで拾う — §4.5)。
   子に背景タスク (Monitor / `tail -f` / `run_in_background`) の停止を 1 回頼んでよいが、
   子が「無い」と返したら下の手順に戻る。**「ユーザー操作待ち」で止まらない。**
+  **子へメッセージを送った直後に打たない。子が止まるのを待つのは `session-archiver` を background で呼ぶ**
+  (2026-09-10 の拒否 4 回はどれも send_message の直後。子が止まった後は 3 件とも 1 回で通った。
+  agent の拒否も親と同じ session_id で数えられるので、親が自分で打ち直す代わりに呼ぶ — [[parent-fanout]] §3.4)
   1. **親の再試行は 1 回まで**。同じ拒否が 2 回続いたら、この turn では打ち続けない
   2. ユーザーに **3 択を 1 行で**知らせる — 子のタブを閉じる / **サイドバーから archive する** /
      子のタブに直接「畳んで」と打つ (子は自分のタブへの直接入力なら畳む — §3 の定型文 (c))。
