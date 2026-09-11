@@ -46,6 +46,10 @@ Monitor({ ws: { url: "ws://127.0.0.1:8799/watch?repo=ippoan/rust-alc-api&workflo
 - `run` 指定なら、その run が終わると bridge が socket を閉じる (close 1000 `done`) = 見張りが自動で終わる。
   run 番号は workflow ごとなので `workflow` と併用。**re-run は同じ番号で走り直す** → 閉じた後に re-run したら張り直す
 - PR の branch 全体を見るなら `ref=<branch>` (こちらは閉じない)
+- **`ref` が付かない run・main 以外の ref で走る run がある**: `repository_dispatch` で走る workflow (例: Release Wave = release-wave-flip) は
+  Actions ページに branch が出ないので `[<ref>]` 無しで流れ、`ref=main` に一致しない。タグ push で走る配信の CI は ref がタグ名 (`v0.0.162` 等)。
+  PR → マージ → 配信まで見るなら /watch を分けて張る: ① `ref=<PR の branch>` ② `workflow=Release Wave` (repo と AND)。
+  タグの CI は `ref=<タグ>` か `workflow=CI&run=<番号>`。実害 2026-09-11: `ref=main` だけで待ち、Release Wave の完了を取りこぼした (Refs ippoan/alc-app-s3#135)
 - `watch: 拡張 (ダッシュボード) が…` の行は拡張が bridge から外れた / 戻った合図 (外れている間は変化が届かない)。
   bridge が落ちれば socket が閉じる
 - watch 対象の repo は拡張の設定 (`set-config` の `repos`、**全セッション共通**)。無い repo は足す。
@@ -174,3 +178,4 @@ bridge に認証は無く、8799 に届く者が Chrome で任意のページを
 - 切断時に無条件で Actions ページを取り直すと 5 秒周期ポーリングになる → バックオフ必須
 - 詳細な経緯・未解決は repo の issue と memory (`gh-actions-live-bridge`, `chrome-policy-needs-hklm-permachine`,
   `ps1-needs-utf8-bom-on-japanese-windows`)
+- `ref=main` だけの /watch で配信を待たない (Release Wave は ref 無し、タグの CI は ref がタグ名。§1)
