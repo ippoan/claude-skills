@@ -127,10 +127,14 @@ agent は**待たずに** `archive_session` を 1 回打つ。拒否されたと
 - **hook との関係**: サブエージェントの tool 呼び出しは、hook から見ると**親と同じ session_id**
   (2026-09-10 実測: サブエージェントの Skill 呼び出しが親の `skills-invoked/<session_id>` に
   記録された)。hook は session_id しか見ないので、agent の拒否は `warn-archive-refused.sh` の
-  親の回数に数えられ、2 回目で `pending` が立つと `require-archive-decision-sent.sh` が
-  **親と agent の両方**を塞ぐはず (実測は session_id の一致まで。サブエージェントの拒否・deny そのものは未実測)。
-  agent はそこで `中断(pending)` を返すので、親は §6 手順 3 の [決定] を送る
-  (本文が手元に無ければ `archive_session` をもう一度打てば hook が同じ本文を出す)。
+  親の回数に数えられ、2 回目で `pending` が立つ。**pending 中も `Agent` の起動 (再起動含む) は
+  `require-archive-decision-sent.sh` が通す** (2026-09-11 修正。以前は `pending` が立つと
+  `Agent` の起動自体が deny され、`session-archiver` を呼び直すことすらできず監督が完全に
+  止まった — Refs ippoan/alc-app-s3#135)。ただし agent 内部の `Bash` 呼び出し (『待つ』のに使う)
+  は pending 中も引き続き deny されるので、2 回目の拒否のあとは agent 側では待てず
+  `中断(pending)` を返す。そこから先は §6 手順 3 の [決定] の本文を、**agent
+  (`session-archiver` を再起動するか、汎用 agent に `archive_session` をもう一度打たせる) に
+  取らせる** — 親が自分で `archive_session` を打ち直すのを既定にしない。
   **親が先に自分で打つと回数が進む** — 待ちは最初から agent に任せる
 
 ### インストール

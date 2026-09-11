@@ -197,7 +197,8 @@ check 33 E '2 回目の文面: 「もう再試行しない」を含む' yes "$(h
 check 34 E '2 回目の文面: 3 択 (タブを閉じる)' yes "$(has "$out2" 'タブを閉じる')"
 check 35 E '2 回目の文面: 3 択 (サイドバーから archive)' yes "$(has "$out2" 'サイドバーから archive')"
 check 36 E '2 回目の文面: 3 択 (子のタブに直接「畳んで」)' yes "$(has "$out2" '直接「畳んで」')"
-check 37 E '2 回目の文面: 待たずに続行 + 次の turn で list_sessions' yes "$(has "$out2" '次の turn の頭で list_sessions')"
+check 37 E '2 回目の文面: 待たずに続行 + 次の turn は Agent で session-archiver' yes \
+  "$(has "$out2" '次の turn は Agent で session-archiver')"
 check 38 E '2 回目の文面: [決定] の見出し (対象 session_id 入り)' yes \
   "$(has "$out2" '[決定] ユーザー指示で self-archive — local_child_1 へ')"
 check 39 E '2 回目の文面: 拒否文言の原文がそのまま入っている' yes "$(has "$out2" "$REFUSED")"
@@ -353,6 +354,10 @@ check 90 F '(b) archive_session → 許可 (再試行は妨げない)' allow \
   "$(decision "$(run "$F" "$(tool_payload "$SID" mcp__ccd_session_mgmt__archive_session)")")"
 check 91 F '(b) ToolSearch → 許可 (deferred の send_message を読む手段)' allow \
   "$(decision "$(run "$F" "$(tool_payload "$SID" ToolSearch)")")"
+check 91.1 F '(b) Agent → 許可 (session-archiver 等に archive_session を打たせる経路。Refs ippoan/alc-app-s3#135)' allow \
+  "$(decision "$(run "$F" "$(tool_payload "$SID" Agent)")")"
+check 91.2 F '(b) Bash は引き続き deny (Agent 以外まで緩めていないことの確認)' deny \
+  "$(decision "$(run "$F" "$(bash_payload "$SID" 'ls')")")"
 
 echo "--- F-c. 宛先・見出しが違う send_message は塞ぐ ---"
 check 92 F '(c) 別の宛先への send_message → deny' deny \

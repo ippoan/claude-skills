@@ -24,6 +24,13 @@
 #     → 許可して pending を消し、sent-<session_id>-<子> を 1 増やす (2 通で打ち止め)
 #   - list_sessions / archive_session (状態確認と再試行は妨げない)
 #   - ToolSearch (send_message が deferred のとき schema を読む唯一の手段。副作用なし)
+#   - Agent (★ 2026-09-11、Refs ippoan/alc-app-s3#135。tool_name の実物は ~/.claude/hooks/
+#     simplify-review-log.sh の matcher: Agent で確認済み。旧名 Task の実例は見つからず未追加)。
+#     subagent_type では絞らない (ユーザー判断「agent 起動が今は正」) — [決定] の本文が
+#     手元に無いとき、session-archiver 等の agent に archive_session を打たせて hook の
+#     文面を持ち帰らせる以外に、pending を抜ける手段が無かったため。agent の tool 呼び出しは
+#     親と同じ session_id で届くので、pending 中でも send_message / list_sessions /
+#     archive_session / ToolSearch 以外は agent 経由でも同じく deny される (未実測)。
 #   それ以外は deny。子が既に畳まれていても、送信 1 回で pending は消えるので害は小さい
 #   (list_sessions の応答は見ない。単純に保つ)。
 #
@@ -53,7 +60,7 @@ HEADING='[決定] ユーザー指示で self-archive'
 tool=$(printf '%s' "$payload" | jq -r '.tool_name // empty' 2>/dev/null || true)
 
 case "$tool" in
-  mcp__ccd_session_mgmt__list_sessions|mcp__ccd_session_mgmt__archive_session|ToolSearch)
+  mcp__ccd_session_mgmt__list_sessions|mcp__ccd_session_mgmt__archive_session|ToolSearch|Agent)
     exit 0 ;;
   mcp__ccd_session_mgmt__send_message)
     to=$(printf '%s' "$payload" | jq -r '.tool_input.session_id // empty' 2>/dev/null || true)
@@ -74,8 +81,10 @@ esac
 reason="archive 拒否後の [決定] をまだ送っていません。warn-archive-refused.sh が出した本文をそのまま send_message で ${child} へ送ってください。
   次の tool 呼び出し: mcp__ccd_session_mgmt__send_message { session_id: \"${child}\", message: <本文。先頭は「${HEADING}」> }
   - 「子も拒否されたのだから送っても無駄」と自分で判断しない。送るかどうかは hook が決めています
-  - 送るまで通るのは、この宛先・この見出しの send_message / list_sessions / archive_session / ToolSearch だけです
-  - 本文が手元に無ければ archive_session をもう一度打つ — warn-archive-refused.sh が同じ本文を出します
+  - 送るまで通るのは、この宛先・この見出しの send_message / list_sessions / archive_session / ToolSearch / Agent だけです
+  - 本文が手元に無ければ、agent (session-archiver 等) に archive_session を 1 回打たせ、
+    hook が出す文面を原文のまま持ち帰らせてください。親が archive_session を打ち直すのを
+    既定にしない — agent 起動が今は正です
   - ユーザー本人が「送るな」と言ったときだけ、ユーザー本人が rm ${pending} で解除します"
 
 jq -nc --arg r "$reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'

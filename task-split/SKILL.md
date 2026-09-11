@@ -322,11 +322,16 @@ compare API 1 発で裏を取る:
 | `block-parent-commits.sh` | PreToolUse `Bash` | parent marker 有 + `git commit` / `push` / `apply` / `am` / `cherry-pick` → **deny**。`gh pr create` / `gh issue create` / `gh issue comment` / `git branch -D` / `git worktree add`\|`remove`\|`list` / 読み取り系はすべて**許可** | 同上 |
 | `block-child-asks-user.sh` | PreToolUse `AskUserQuestion` | child marker 有 → **deny** (親へ `send_message` の `[質問]` に寄せる) | child marker が無ければ素通し |
 | `warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗なので `PostToolUseFailure` でしか届かない — Refs ippoan/claude-skills#163) | payload 全体 (JSON 文字列) に「was not archived」が含まれていれば**理由を問わず**拾う (文言ごとに一致条件を足す設計は同じ穴を繰り返す — Refs ippoan/claude-skills#167)。回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」**、**2 回目以降は `[決定] ユーザー指示で self-archive` の本文を hook が完成形で出す** (拒否文言の原文 / 基準 3 点 / `user-quotes.txt` の原文 / report-to-parent の例外 (b) 条文を実行時抽出 / `archive_session self` を呼ぶ指示まで埋め、親が埋めるのは PR 番号 1 か所だけ)。対象が `self` なら「再試行しない。サイドバーかタブを閉じてもらう」。**塞がない** (exit 2 で文面を返すだけ)。ただし 2 回目以降で `user-quotes.txt` に原文があり、その子への送信が 2 通未満なら、`~/.claude/state/archive-refused/pending-<session_id>` に子の session_id を 1 行書く (次の行の hook が読む) | 拒否文言でなければ素通し |
-| `require-archive-decision-sent.sh` | PreToolUse `*` (全ツール) | `pending-<session_id>` がある間、**`send_message` で宛先 = pending の子 かつ message が `[決定] ユーザー指示で self-archive` で始まる** (先頭の空白・改行は無視) もの・`list_sessions`・`archive_session`・`ToolSearch` 以外を **deny**。正しい送信で pending を消し、送信数を `sent-<session_id>-<子>` に数える (2 通で打ち止め = 3 通目は送らせない)。解除はその送信か、ユーザー本人の `rm` だけ (Refs ippoan/alc-app-s3#135) | pending が無い / session_id が取れなければ素通し |
+| `require-archive-decision-sent.sh` | PreToolUse `*` (全ツール) | `pending-<session_id>` がある間、**`send_message` で宛先 = pending の子 かつ message が `[決定] ユーザー指示で self-archive` で始まる** (先頭の空白・改行は無視) もの・`list_sessions`・`archive_session`・`ToolSearch`・**`Agent`** (2026-09-11、subagent_type では絞らない。本文が手元に無ければ agent (session-archiver 等) に `archive_session` を打たせ、hook の文面を原文で持ち帰らせる経路 — Refs ippoan/alc-app-s3#135) 以外を **deny**。正しい送信で pending を消し、送信数を `sent-<session_id>-<子>` に数える (2 通で打ち止め = 3 通目は送らせない)。解除はその送信か、ユーザー本人の `rm` だけ | pending が無い / session_id が取れなければ素通し |
 
 **「書き込み全部禁止」にはしていない。** 親は scratchpad に計画を書き、memory を更新し、
 **PR を作り**、マージ後に **branch を掃除する**必要がある。塞ぐのは
 「repo の作業ツリーへの書き込み」と「commit/push」だけ。
+
+**経緯** (2026-09-11、Refs ippoan/alc-app-s3#135): `require-archive-decision-sent.sh` が
+`Agent` の起動も deny していたため、archive 拒否が 2 回続いて `pending` が立つと
+`session-archiver` を呼び直すことすらできず監督が完全に止まった。`Agent` を許可リストに
+足して解消 (`subagent_type` では絞らない — 「agent 起動が今は正」というユーザー判断)。
 
 ### marker の立て方 — title が唯一の判定材料
 
@@ -625,8 +630,10 @@ CPU は「いま動いている」の**陽性証拠**にしかならず、0 を�
      (下の「`[決定]` の本文」参照)。
      **送るまで他のツールは `require-archive-decision-sent.sh` が塞ぐ** (§4.5) — 「子も拒否されたの
      だから送っても無駄」と自分で判断して飛ばすことはできない (2026-09-10、Refs ippoan/alc-app-s3#135)
-  4. **返事を待たずに続行する。** 次の turn の頭で `list_sessions` を見て、まだ在れば
-     もう一度 `archive_session` を打つ (また拒否されたら 1 行だけ繰り返す)
+  4. **返事を待たずに続行する。** 次の turn は `Agent` で `session-archiver` を起動し
+     (background)、まだ在ればそちらに `archive_session` の再試行を任せる。親自身が
+     `archive_session` を直接打ち直すのを既定にしない (2026-09-11、agent 起動が今は正 —
+     Refs ippoan/alc-app-s3#135)
   5. 畳めないまま親が交代するなら、未 archive の子として台帳に載せる (下の「監督役を引き継ぐとき」)
 
   **★ `[決定]` の本文 — 親が組み立てない。hook が埋めた完成形をそのまま送る:**
