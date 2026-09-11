@@ -86,12 +86,21 @@ description: >
 auditor は `go` / `rebase-first` / `no-go` / `要確認` を推奨で返す。
 **親はそれを読んで決める。** auditor は PR を作らないし、作らせてはいけない。
 
-## 3.4 archive — 子が止まるのを `session-archiver` で待つ
+## 3.4 archive — `session-archiver` はまず打ち、拒否されたときだけ待つ
 
-子はメッセージを受けるたびにターンを始める。**送った直後の `archive_session` はアプリに
-弾かれる** — 2026-09-10 の #p135 の親の 4 回の拒否 (「it still has live work (…)」3 回 /
-「it is still working (a turn in progress)」1 回) は、どれも子へ send_message した直後だった。
-子が止まって落ち着いた後の archive は 3 件とも 1 回で通った。
+子はメッセージを受けるたびにターンを始める。**畳む前に子へ送らない** ([PR] 通知・
+「畳んでよい」・背景タスクの停止依頼も送らない)。送ると子のターンが始まり
+「live work」で弾かれる — 2026-09-10 の #p135 の親の 4 回の拒否 (「it still has live
+work (…)」3 回 / 「it is still working (a turn in progress)」1 回) は、どれも子へ
+send_message した直後だった。**送らなければ子は止まっていて 1 回で通る。**
+
+2026-09-11 の #p135 (12 世代目) では、逆に「待ってから打つ」設計そのものが仇になった。
+子 (c226-2) は既に止まっていたのに、畳む直前に親が送った `send_message` ([決定] や
+「背景タスクを止めて」) のたびに子のターンが起き、`archive_session` が 3 回・子の
+self-archive も 2 回弾かれた。session-archiver が「子が 2 分以上止まったのを確かめて
+から打つ」と報告したのに対し、ユーザーは「いらないだろ」と判断した
+(Refs ippoan/alc-app-s3#135)。**待つのは待ち時間ではなく、送ったせいで子のターンが
+起きること自体が原因だった** — 送らなければ待つ理由も無い。
 
 ⇒ 基準 3 点 ([[task-split]] §6) を親が判定したら、**自分で打つ代わりに `session-archiver` を
 `Agent` の `run_in_background: true` で起動する。** 渡すもの (1 つでも欠けると `要確認`):
@@ -101,8 +110,9 @@ auditor は `go` / `rebase-first` / `no-go` / `要確認` を推奨で返す。
 - 掃除の状態 (済み / archive 後に `worktree-janitor` で片付ける)
 - 未消化の申し送りが無いこと
 
-agent は `isRunning: false` が 2 回続けて観測され、`lastActivityAt` が 60 秒以上前になるまで
-待ってから `archive_session` を打つ (最大 15 分。拒否されたら待ち直して最大 3 回)。
+agent は**待たずに** `archive_session` を 1 回打つ。拒否されたときだけ、
+`isRunning: false` が 2 回続けて観測され `lastActivityAt` が 60 秒以上前になるまで
+待ってから再試行する (最大 15 分。拒否されたら待ち直して合計 3 回まで)。
 子へ send_message はしない (送るとターンが始まる)。3 回とも弾かれたら拒否文言 3 つを返すので、
 親は [[task-split]] §6「アプリが親の archive_session を拒否したとき」の手順 2 以降へ進む。
 成功したら §3.5 の `worktree-janitor` へ。
