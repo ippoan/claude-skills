@@ -136,10 +136,13 @@ worktree> && git branch -D …` を打って auto mode の分類器に拒否さ�
 渡すもの (1 つでも欠けると agent は何もせず `要確認` を返す):
 
 - repo の絶対パス / 片付ける worktree の絶対パス / 消す local branch 名
-- 対応する PR (`owner/repo#N`)
+- 対応する PR (`owner/repo#N`)。PR の無い worktree (旧親・repo を変えずに終わった子)
+  は `PR 無し` と書く — agent が HEAD と消す branch が origin/main の祖先かで
+  代わりに確かめる
 - **その子が archive 済みであることを `list_sessions` で確かめた結果**
 
-agent 側は PR が MERGED か・worktree が main clone でないか・未コミット変更が無いか・
+agent 側は PR が MERGED か (PR 無しなら HEAD と消す branch が origin/main の祖先か)・
+worktree が main clone でないか・未コミット変更が無いか・
 branch がどこにも checkout されていないか・生きた pid が無いか、の 5 点を確認してから
 `git worktree remove` (`--force` なし) → `git branch -D` → `git worktree prune` を実行する。
 remote branch の削除・main clone や他セッションの worktree への操作はしない。

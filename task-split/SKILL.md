@@ -277,7 +277,10 @@ compare API 1 発で裏を取る:
   親が子の worktree を直接触らない (2 セッションが同じ tree を書くと壊れる)。
 - **掃除は PR の状態で判断する。** マージ後に `git worktree remove` + `git branch -D`。
   **squash merge だと `git merge-base --is-ancestor` では merged と判定できない** —
-  必ず PR の状態 (MERGED) で見る。掃除は子の [完了] 後に親が指示するか、全タスク
+  必ず PR の状態 (MERGED) で見る。PR の無い worktree (旧親・repo を変えずに終わった子)
+  だけは例外で、`worktree-janitor` が HEAD と消す branch が origin/main の祖先
+  (独自 commit 0) かで確かめる — merged 判定ではなく「失う commit が無い」判定。
+  掃除は子の [完了] 後に親が指示するか、全タスク
   完了後にまとめてやる。あわせて `archive_session` で終わったセッションを畳む。
 - **子の手元の掃除が拒否されたら、親が代わりに打たず `worktree-janitor` を
   background で呼ぶ。** 子が自分の worktree/branch を消そうとして auto mode の
