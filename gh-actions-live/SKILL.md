@@ -2,7 +2,7 @@
 name: gh-actions-live
 description: >
   GitHub Actions の run 状態変化を、Windows Chrome 拡張 (ippoan/gh-actions-live) →
-  Linux の ws-bridge → Monitor で **push で受け取る**運用。`gh run list` を sleep
+  Linux の常駐 bridge → Monitor の ws /watch で **自分の repo / run だけ push で受け取る**運用。`gh run list` を sleep
   ループで叩く代わりに使う。Claude から拡張の設定・ウィンドウ起動・更新が
   github.com のタブ経由 / bridge 経由でできる。トリガー: 「CI を見張って」
   「PR の CI 待ち」「Actions を watch」「gh-actions-live」「bridge」「ダッシュボード
@@ -17,9 +17,11 @@ description: >
 **repo**: https://github.com/ippoan/gh-actions-live (public)。Release は main merge ごとに自動採番。
 
 ```
-Windows Chrome 拡張 ──ws://<linux tailscale>:8799──▶ bridge/ws-bridge.mjs ──stdout──▶ Monitor (通知)
-   (extension = ダッシュボード / extension-bg = service worker)      ▲
-Claude ── POST localhost:8799/cmd {"command":...} ────────────────────┘
+Windows Chrome 拡張 ──ws://<linux tailscale>:8799──▶ gh-actions-bridge (Rust、systemd --user で常駐)
+   (extension = ダッシュボード / extension-bg = service worker)     │ ws /watch?repo=…&run=…
+Claude ── POST localhost:8799/cmd {"command":...} ────────────────▶│ (条件に合う run だけ 1 行ずつ)
+                                                                   ▼
+                                                 各セッションの Monitor (ws ソース)
 Claude ── Claude in Chrome で github.com タブ → chrome.runtime.sendMessage(<拡張ID>, {command:...})
 ```
 
@@ -27,16 +29,35 @@ Claude ── Claude in Chrome で github.com タブ → chrome.runtime.sendMess
 WebSocket を購読する。集約ダッシュボード (repo あたり 1〜2 件に畳むもの) と違い、
 **同一 repo の並列 run が全部個別に見える**。
 
-## 1. セッションで最初にやること (Linux 側)
+## 1. CI を見張る (Linux 側)
+
+**bridge は systemd --user で常駐している。セッションから起動しない / 止めない**
+(Node 版 `bridge/ws-bridge.mjs` は廃止 ippoan/gh-actions-live#42。セッションが起動していた頃は 8799 を取り合い、
+全 repo の変化が起動したセッションにだけ流れて「無関係な通知」が続いた)。見張りは `/watch` に条件を付けて繋ぐ:
 
 ```
-Monitor({ command: "cd ~/claude260730/gh-actions-live && exec node bridge/ws-bridge.mjs 8799",
-          description: "gh-actions-live bridge", persistent: true })
+Monitor({ ws: { url: "ws://127.0.0.1:8799/watch?repo=ippoan/rust-alc-api&workflow=CI&run=1619" },
+          description: "rust-alc-api CI #1619", persistent: true, timeout_ms: 3600000 })
 ```
-- stdout 1 行 = 1 通知 (`<repo> <workflow> #<run>: <from> → <to> [<ref>] — <title>` / `snapshot: N runs…`)
-- ack / status / 接続ノイズは **stderr** (= Monitor の出力ファイル `/tmp/claude-1001/…/tasks/<id>.output` を grep)
+- 1 フレーム = 1 通知 (`<repo> <workflow> #<run>: <from> → <to> [<ref>] — <title>`)。条件に合わない run は来ない
+- 条件: `repo` / `ref` (branch 完全一致。長い名前は先頭 40 文字) / `run` / `workflow` (部分一致・大小無視) / `by`。
+  同じ key を重ねると OR、違う key は AND。条件なしは 400 (`all=1` で全量)
+- 繋いだ直後に現在値が 1 行来る (進行中の run と、`run` 指定の run)。既に終わった run でも待ちぼうけにならない
+- `run` 指定なら、その run が終わると bridge が socket を閉じる (close 1000 `done`) = 見張りが自動で終わる。
+  run 番号は workflow ごとなので `workflow` と併用。**re-run は同じ番号で走り直す** → 閉じた後に re-run したら張り直す
+- PR の branch 全体を見るなら `ref=<branch>` (こちらは閉じない)
+- `watch: 拡張 (ダッシュボード) が…` の行は拡張が bridge から外れた / 戻った合図 (外れている間は変化が届かない)。
+  bridge が落ちれば socket が閉じる
+- watch 対象の repo は拡張の設定 (`set-config` の `repos`、**全セッション共通**)。無い repo は足す。
+  **絞るために repos を減らさない** (他セッションの見張りが止まる)
+
+bridge の状態:
 - `curl -s localhost:8799/` の `clients` に `extension-bg@<win tailscale ip>` が居れば拡張が生きている。
-  `extension@…` はダッシュボードが開いている印
+  `extension@…` はダッシュボードが開いている印。`watchers` は今繋がっている /watch の条件
+- 全 repo の変化・ack・接続ログは `journalctl --user -u gh-actions-bridge -f`
+- 入っていない / 更新したとき: `cd ~/claude260730/gh-actions-live && cargo install --locked --path bridge`、
+  初回だけ `cp bridge/gh-actions-bridge.service ~/.config/systemd/user/ && systemctl --user enable --now gh-actions-bridge`、
+  更新後は `systemctl --user restart gh-actions-bridge`
 
 **bridge を再起動すると拡張側は最大 30 秒で再接続**する (指数バックオフ)。
 
@@ -46,7 +67,7 @@ bridge 経由 (拡張が接続中のとき):
 ```
 curl -s -X POST localhost:8799/cmd -d '{"command":"open-dashboard","mode":"popup"}'   # 遠隔でウィンドウを開く
 curl -s -X POST localhost:8799/cmd -d '{"command":"set-config","repos":["o/r1","o/r2"],"notify":false}'
-curl -s -X POST localhost:8799/cmd -d '{"command":"snapshot"}'      # 全 run を stdout に要約
+curl -s -X POST localhost:8799/cmd -d '{"command":"snapshot"}'      # 全 run の要約を bridge の journal に出す
 curl -s -X POST localhost:8799/cmd -d '{"command":"update"}'        # native host → update.ps1 → 拡張が自分で reload
 curl -s -X POST localhost:8799/cmd -d '{"command":"status"}'        # alive socket の診断 (ダッシュボードの {type:status} と bg の ack の 2 行)
 curl -s -X POST localhost:8799/cmd -d '{"command":"alive-reset"}'   # alive socket を閉じて張り直す (status が connected:false のまま戻らないとき)
@@ -140,8 +161,12 @@ bridge に認証は無く、8799 に届く者が Chrome で任意のページを
 
 - **`gh run list` をループで叩かない。** この拡張が watch 対象なら変化は勝手に届く。
   watch 対象に無い repo は `set-config` で足す
+- **bridge をセッションから起動しない / kill しない。** 8799 は systemd の `gh-actions-bridge` が持つ。
+  node の bridge を起動すると取り合いになり、systemd 側が `Address already in use` で再起動を繰り返す
+  (journal に出る)。「無関係な通知が続く」は bridge の stdout を Monitor していたのが原因 → `/watch` で絞る
+- `pkill -f '<文字列>'` は**その文字列を含む自分の bash -c ごと殺す** (exit 144 で何も出ずに終わる)。pid を指定して kill する
 - PR を出した直後の `update` は「最新 = 旧版」と返ることがある (update.xml の反映が Release 完了から数秒遅れる)。少し待って再送
-- ack は stdout に出ない (通知ノイズ防止)。結果は Monitor の出力ファイルを grep
+- ack / status の結果は `/watch` には来ない (通知ノイズ防止)。`journalctl --user -u gh-actions-bridge` を grep
 - `.ps1` は **UTF-8 BOM 必須** (5.1 が Shift_JIS で読んで壊れる)。Release 資産は octet-stream なので
   `Invoke-WebRequest` の `.Content` が byte[] で返る。両方 update.ps1 で対策済み・CI で検査
 - host_permissions に `release-assets.githubusercontent.com` が要る (`releases/latest/download` のリダイレクト先)
