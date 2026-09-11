@@ -112,8 +112,12 @@ self-archive も 2 回弾かれた。session-archiver が「子が 2 分以上�
 
 agent は**待たずに** `archive_session` を 1 回打つ。拒否されたときだけ、
 `isRunning: false` が 2 回続けて観測され `lastActivityAt` が 60 秒以上前になるまで
-待ってから再試行する (最大 15 分。拒否されたら待ち直して合計 3 回まで)。
-子へ send_message はしない (送るとターンが始まる)。3 回とも弾かれたら拒否文言 3 つを返すので、
+待ってから再試行する (最大 15 分)。**★ 実質の試行は 2 回まで** — `warn-archive-refused.sh`
+は 1 回目の拒否では pending を立てないが、2 回目の拒否で pending を立て、
+`require-archive-decision-sent.sh` が Bash を deny する。agent は「待つ」ために Bash を使うので、
+2 回目も拒否されると 3 回目を待てず、待たずに打つこともしない (`session-archiver` の
+禁止事項) — ただちに `中断(pending)` で返す。
+子へ send_message はしない (送るとターンが始まる)。2 回とも弾かれたら拒否文言 2 つを返すので、
 親は [[task-split]] §6「アプリが親の archive_session を拒否したとき」の手順 2 以降へ進む。
 成功したら §3.5 の `worktree-janitor` へ。
 
@@ -214,7 +218,7 @@ child-auditor を並列起動 (終わった子のぶんだけ)
 | 子の進捗 | 子の `send_message` ([[report-to-parent]]) と harness の終了通知 |
 | CI の結果 | [[gh-actions-live]] の bridge (push で届く) |
 | issue の動き | `subscribe_issue_activity` (MCP) |
-| 子が止まること (archive の前) | **push で知る手段が無い** → 例外として `session-archiver` を background で置く (§3.4。上限 15 分・archive 3 回・条件待ち) |
+| 子が止まること (archive の前) | **push で知る手段が無い** → 例外として `session-archiver` を background で置く (§3.4。まず打ち拒否時のみ待つ・実質 archive 2 回まで・上限 15 分) |
 
 **★ ただし「起きなかった」を沈黙と区別すること。** 子の報告が来ないことは
 「まだ動いている」の証拠にならない。**状態を口にする前に `list_sessions` を見る**
