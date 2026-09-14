@@ -4,8 +4,8 @@
 # block-parent-repo-writes.sh / block-parent-commits.sh / block-child-asks-user.sh が
 # これを読む。
 #
-# 記録の形: 空ファイル ~/.claude/state/parent-role/<session_id>
-#                      ~/.claude/state/child-role/<session_id>
+# 記録の形: 親はタイトルを 1 行 ~/.claude/state/parent-role/<session_id>
+#          子は空ファイル      ~/.claude/state/child-role/<session_id>
 #
 # Why: ~/.claude/sessions/*.json に **title は無い** (2026-09-05 実測。keys は親子で
 # 完全同一で、「spawn_task で起動された」ことを示す欄も無い)。title を hook が知れるのは
@@ -46,7 +46,7 @@ elif printf '%s' "$title" | grep -qE '#c[0-9]+-|#p[0-9]+-c'; then
   : > "${CHILD_DIR}/${sid_safe}" 2>/dev/null || true
   rm -f "${PARENT_DIR}/${sid_safe}" 2>/dev/null || true
 elif printf '%s' "$title" | grep -qE '^#p[0-9]+ '; then
-  : > "${PARENT_DIR}/${sid_safe}" 2>/dev/null || true
+  printf '%s\n' "$title" > "${PARENT_DIR}/${sid_safe}" 2>/dev/null || true
   rm -f "${CHILD_DIR}/${sid_safe}" 2>/dev/null || true
 fi
 
