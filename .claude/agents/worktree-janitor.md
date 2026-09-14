@@ -36,7 +36,9 @@ tools: Read, Bash
 ## Bash の許可コマンド (これ以外は実行禁止)
 
 - `git -C <repo絶対パス> fetch origin` (読み取りのみ。失敗しても続行してよい)
-- `gh pr view <N> --repo <owner/repo> --json state --jq .state`
+- `gh pr view <N> --repo <owner/repo> --json state,headRefName`
+  (`state` と `headRefName` を 1 回の呼び出しで両方取る。確認 0 の PR head branch
+  判定と確認 1 の MERGED 判定を、この 1 回の結果で行う)
 - `git -C <repo絶対パス> worktree list --porcelain`
 - `git -C <worktree絶対パス> status --porcelain`
 - `git -C <worktree絶対パス> rev-parse --is-inside-work-tree`
@@ -79,15 +81,18 @@ worktree には一切触れません** — 対象は親が渡した 1 本だけ�
 - `git -C <repo絶対パス> branch --show-current` で得た main clone の現在の branch
 
 **さらに、名前が `claude/` で始まるか、親が渡した PR の head branch であること。**
-どちらでもなければ消さない。local の `main` も祖先判定 (確認 1-(b)) だけを見ると
-通ってしまうため、この確認 0 で先に弾く。
+PR が渡されているときは `gh pr view <N> --repo <owner/repo> --json state,headRefName`
+の `headRefName` が消す branch名と**完全一致**することで判定する
+(`PR 無し` のときは `claude/` 始まりだけで判定する)。どちらでもなければ消さない。
+local の `main` も祖先判定 (確認 1-(b)) だけを見ると通ってしまうため、この確認 0 で
+先に弾く。
 
 ### 確認 1 — PR の状態
 
 2 分岐:
 
-- (a) **PR が渡された** → 従来どおり `gh pr view <N> --repo <owner/repo> --json
-  state --jq .state` が `MERGED`
+- (a) **PR が渡された** → 確認 0 で呼んだ `gh pr view <N> --repo <owner/repo> --json
+  state,headRefName` の `state` が `MERGED`
 - (b) **`PR 無し`** → 消す branch ごとに `git -C <repo> merge-base --is-ancestor
   refs/heads/<branch> origin/main` が**exit 0**。**worktree が `worktree 無し`
   でなければ**、加えて `git -C <worktree> merge-base --is-ancestor HEAD
@@ -170,6 +175,7 @@ branch だけ残った」をそのまま出力に返す (今の運用どおり)�
 ```
 ## 確認
 - branch名の担保: <OK | main/既定branch/main clone HEAD につき拒否 | claude/でも渡されたPRのheadでもないため拒否>
+- headRefName一致(PRが渡されたときのみ): <一致 | 不一致(headRefName=<>) | -(PR無し)>
 - PR: <MERGED | PR無し(全branchがorigin/mainの祖先) | PR無し(独自commit有り: <HEAD|branch名>) | 未MERGED(state=<>) | 確認不可>
 - worktree判定: <OK(worktree) | main clone | 一覧に無し | 対象外(worktree無し)>
 - 未コミット変更: <無し | 有り(件数) | 対象外(worktree無し)>
