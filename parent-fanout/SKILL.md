@@ -23,7 +23,7 @@ description: >
 | **調査** (分割の前) | 全タスク候補のコードを親が読む | N 個の範囲を 1 本で順番に読む。親の context も食う |
 | **裏取り** (子の [完了] 後) | compare で実測し申告と突き合わせる | 子が同時に終わると N 件が直列で待つ |
 | **archive** (子の [完了] 後) | 子へ send_message した直後に `archive_session` を打ち、「live work」「turn in progress」で弾かれる | 子はメッセージを受けるたびにターンを始める。止まるのを待つ専用 agent (`session-archiver`) へ逃がす |
-| **掃除** (子の archive 後) | 子が拒否された `git worktree remove` / `git branch -D` を親が代わりに打とうとする | それは「拒否された操作の代行」になる。専用 agent (`worktree-janitor`) へ逃がす |
+| **掃除** (子の archive 後) | 子が拒否された `git worktree remove` / `git branch -D`\|`-d` を親が代わりに打とうとする | それは「拒否された操作の代行」になる。専用 agent (`worktree-janitor`) へ逃がす |
 | **台帳への追記** (随時) | 親が台帳へ `printf ... >> ledger-children.md` を直接打とうとする | auto mode の分類器に拒否されることがある。専用 agent (`ledger-keeper`) へ逃がす |
 
 **どちらも「読んで事実を集める」仕事で、判断ではない。** だから逃がせる。
@@ -153,16 +153,20 @@ worktree> && git branch -D …` を打って auto mode の分類器に拒否さ�
 ⇒ **`worktree-janitor` を `Agent` の `run_in_background: true` で起動する。**
 渡すもの (1 つでも欠けると agent は何もせず `要確認` を返す):
 
-- repo の絶対パス / 片付ける worktree の絶対パス / 消す local branch 名
+- repo の絶対パス / 片付ける worktree の絶対パス (**worktree が既に消えて branch
+  だけ残っているときは `worktree 無し`**) / 消す local branch 名
 - 対応する PR (`owner/repo#N`)。PR の無い worktree (旧親・repo を変えずに終わった子)
   は `PR 無し` と書く — agent が HEAD と消す branch が origin/main の祖先かで
   代わりに確かめる
 - **その子が archive 済みであることを `list_sessions` で確かめた結果**
 
-agent 側は PR が MERGED か (PR 無しなら HEAD と消す branch が origin/main の祖先か)・
-worktree が main clone でないか・未コミット変更が無いか・
-branch がどこにも checkout されていないか・生きた pid が無いか、の 5 点を確認してから
-`git worktree remove` (`--force` なし) → `git branch -D` → `git worktree prune` を実行する。
+agent 側は branch 名が `main`/既定 branch/main clone の現在の branch でなく
+`claude/` 始まりか渡した PR の head branch であること・PR が MERGED か (PR 無しなら
+HEAD と消す branch が origin/main の祖先か)・worktree が main clone でないか・
+未コミット変更が無いか・branch がどこにも checkout されていないか・生きた pid が
+無いか、を確認してから `git worktree remove` (`--force` なし。`worktree 無し` なら
+飛ばす) → **`git branch -D` (PR MERGED) または `git branch -d` (PR 無し・祖先)** →
+`git worktree prune` (`worktree 無し` なら飛ばす) を実行する。
 remote branch の削除・main clone や他セッションの worktree への操作はしない。
 
 ### インストール

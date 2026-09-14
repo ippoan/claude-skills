@@ -292,6 +292,9 @@ compare API 1 発で裏を取る:
   (実害 2026-09-10、Refs ippoan/claude-skills#135)。子が archive 済みであることを
   `list_sessions` で確かめたうえで、repo/worktree/branch/対応 PR を渡して
   `Agent` の `worktree-janitor` (`run_in_background: true`) を起動する。
+  **PR が MERGED の branch は `-D`、PR の無い (祖先の) branch は `-d`** —
+  worktree remove は通ったが branch だけ拒否されて残ったときも、`worktree 無し`
+  として janitor に渡せば branch だけ判定して片付ける。
 - **remote branch は repo 設定に任せる。** `delete_branch_on_merge` を on にしておけば
   merge 主体 (workflow / 人) に関係なく自動削除される。off のまま子に
   `push --delete` させると merged-PR ガード系の hook に弾かれがち — その場合も
