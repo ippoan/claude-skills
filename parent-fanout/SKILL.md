@@ -247,6 +247,12 @@ child-auditor を並列起動 (終わった子のぶんだけ)
   急ぐなら新しいセッションで使う
 - **MCP connector は Agent tool のサブエージェントには届くが、spawn_task の子には
   引き継がれない。** これも「調査を子セッションにしない」理由の 1 つ
+- **connector の `status: pending` は「接続中」であって失敗ではない (実測 2026-09-12)。**
+  開始直後は claude.ai connector が全部 `pending` で `ToolSearch` にも出ないことがあるが、
+  **数分待ってターンをまたいで打ち直すと deferred tool 一覧へまとめて降りてくる**
+  (agent 定義が「遅れて着く」のと同型)。`reconnect_session_connector` は `failed` の
+  server 種別専用で connector には効かず、再接続で UUID も変わらない。⇒ 1 回見えなくても
+  「無い」と断定せず、台帳の過去の成功例を先に見る
 - **surveyor の「該当なし」を「無い」と読まない。** 意味検索の 0 件は無いことの証明に
   ならない ([[search-zero-hits-is-not-proof]])
 - **auditor の `go` は CI green の保証ではない。** compare の実測と申告の一致までしか
