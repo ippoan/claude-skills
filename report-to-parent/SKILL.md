@@ -215,7 +215,7 @@ send_message は相手の処理中 turn が終わってから届き、返信が�
 
 ## 機械的な栓 (hook) — 親は実装せず、子はユーザーに聞かない
 
-機械的な栓が 6 本ある。**読了チェックは不読を防ぐだけで違反を防げない** — 2026-09-05、
+機械的な栓が 7 本ある。**読了チェックは不読を防ぐだけで違反を防げない** — 2026-09-05、
 `#p134` の監督 (親) セッションが自分で migration SQL を書き、postgres を立て、commit しようとして
 ユーザーに止められた。その親は task-split の「**このセッション (親) は実装せず**」を
 **読了して引用まで提出していた** (Refs ippoan/claude-skills#152)。だから口そのものを塞ぐ。
@@ -227,9 +227,9 @@ send_message は相手の処理中 turn が終わってから届き、返信が�
 **文面を返すだけの hook (exit 2 の advisory) と memory は、モデルの判断で上書きされる** —
 だから 6 本目が、`[決定]` を送るまで他のツールを塞ぐ。
 
-`parent-role/hooks/` の 6 本を `~/.claude/hooks/` へ symlink し、`~/.claude/settings.json` に登録する。
+`parent-role/hooks/` の 7 本を `~/.claude/hooks/` へ symlink し、`~/.claude/settings.json` に登録する。
 
-### hook 6 本 (`parent-role/hooks/`)
+### hook 7 本 (`parent-role/hooks/`)
 
 | hook | event / matcher | 何をするか | fail-open |
 |---|---|---|---|
@@ -239,6 +239,7 @@ send_message は相手の処理中 turn が終わってから届き、返信が�
 | `block-child-asks-user.sh` | PreToolUse `AskUserQuestion` | child marker 有 → **deny** (親へ `send_message` の `[質問]` に寄せる) | child marker が無ければ素通し |
 | `warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗なので `PostToolUseFailure` でしか届かない — Refs ippoan/claude-skills#163) | payload 全体 (JSON 文字列) に「was not archived」が含まれていれば**理由を問わず**拾う (文言ごとに一致条件を足す設計は同じ穴を繰り返す — Refs ippoan/claude-skills#167)。回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」**、**2 回目以降は `[決定] ユーザー指示で self-archive` の本文を hook が完成形で出す** (拒否文言の原文 / 基準 3 点 / `user-quotes.txt` の原文 / report-to-parent の例外 (b) 条文を実行時抽出 / `archive_session self` を呼ぶ指示まで埋め、親が埋めるのは PR 番号 1 か所だけ)。対象が `self` なら「再試行しない。サイドバーかタブを閉じてもらう」。**塞がない** (exit 2 で文面を返すだけ)。ただし 2 回目以降で `user-quotes.txt` に原文があり、その子への送信が 2 通未満なら、`~/.claude/state/archive-refused/pending-<session_id>` に子の session_id を 1 行書く (次の行の hook が読む) | 拒否文言でなければ素通し |
 | `require-archive-decision-sent.sh` | PreToolUse `*` (全ツール) | `pending-<session_id>` がある間、**`send_message` で宛先 = pending の子 かつ message が `[決定] ユーザー指示で self-archive` で始まる** (先頭の空白・改行は無視) もの・`list_sessions`・`archive_session`・`ToolSearch`・**`Agent`** (2026-09-11、subagent_type では絞らない。本文が手元に無ければ agent (session-archiver 等) に `archive_session` を打たせ、hook の文面を原文で持ち帰らせる経路 — Refs ippoan/alc-app-s3#135) 以外を **deny**。正しい送信で pending を消し、送信数を `sent-<session_id>-<子>` に数える (2 通で打ち止め = 3 通目は送らせない)。解除はその送信か、ユーザー本人の `rm` だけ | pending が無い / session_id が取れなければ素通し |
+| `require-spawn-task-title.sh` | PreToolUse `mcp__ccd_session__spawn_task` | parent marker 有 + title が §1 の 3 形 (枝の子・自 issue の子・後継の親) のどれにも完全に当たらなければ **deny**。marker (親自身のタイトル) が `#p<M> ` で始まっていれば、title から取った issue 番号と `<M>` の一致も見る (不一致は別案件の取り違えとして deny) | parent marker が無い / payload が壊れている / jq が無い / session_id か title が空 → 素通し |
 
 **「書き込み全部禁止」にはしていない。** 親は scratchpad に計画を書き、memory を更新し、
 **PR を作り**、マージ後に **branch を掃除する**必要がある。塞ぐのは
@@ -319,9 +320,10 @@ ln -sfn <claude-skills>/parent-role/hooks/block-parent-commits.sh     ~/.claude/
 ln -sfn <claude-skills>/parent-role/hooks/block-child-asks-user.sh    ~/.claude/hooks/block-child-asks-user.sh
 ln -sfn <claude-skills>/parent-role/hooks/warn-archive-refused.sh     ~/.claude/hooks/warn-archive-refused.sh
 ln -sfn <claude-skills>/parent-role/hooks/require-archive-decision-sent.sh ~/.claude/hooks/require-archive-decision-sent.sh
+ln -sfn <claude-skills>/parent-role/hooks/require-spawn-task-title.sh     ~/.claude/hooks/require-spawn-task-title.sh
 ```
 
-**★ `ls -la ~/.claude/hooks/` で 6 本が symlink (`->`) であることを確かめる。** 実ファイルのコピーに
+**★ `ls -la ~/.claude/hooks/` で 7 本が symlink (`->`) であることを確かめる。** 実ファイルのコピーに
 なっていたら上の `ln -sfn` で symlink に戻す (2026-09-09、`warn-archive-refused.sh` が古いコピーのまま
 残り、repo の最新 (#160 の文面) と食い違っていた — Refs ippoan/claude-skills#163)。
 
@@ -339,6 +341,9 @@ ln -sfn <claude-skills>/parent-role/hooks/require-archive-decision-sent.sh ~/.cl
                 "statusMessage": "親セッションの commit/push か確認中" }] },
   { "matcher": "AskUserQuestion",
     "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-child-asks-user.sh", "timeout": 10 }] },
+  { "matcher": "mcp__ccd_session__spawn_task",
+    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/require-spawn-task-title.sh", "timeout": 10,
+                "statusMessage": "spawn_task のタイトルを命名規約で検査中" }] },
   { "matcher": "*",
     "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/require-archive-decision-sent.sh", "timeout": 10 }] }
 ]

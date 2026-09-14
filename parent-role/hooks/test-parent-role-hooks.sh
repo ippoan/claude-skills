@@ -11,6 +11,7 @@ B="${HERE}/block-parent-repo-writes.sh"
 C="${HERE}/block-parent-commits.sh"
 D="${HERE}/block-child-asks-user.sh"
 E="${HERE}/warn-archive-refused.sh"
+G="${HERE}/require-spawn-task-title.sh"
 
 SANDBOX=$(mktemp -d /tmp/parent-role-hooks-test.XXXXXX)
 trap 'rm -rf "$SANDBOX"' EXIT
@@ -32,6 +33,7 @@ reset_markers() {
 mk_parent()  { mkdir -p "${HOME}/.claude/state/parent-role";  : > "${HOME}/.claude/state/parent-role/$1"; }
 mk_child()   { mkdir -p "${HOME}/.claude/state/child-role";   : > "${HOME}/.claude/state/child-role/$1"; }
 mk_mayask()  { mkdir -p "${HOME}/.claude/state/child-may-ask";: > "${HOME}/.claude/state/child-may-ask/$1"; }
+mk_parent_titled() { mkdir -p "${HOME}/.claude/state/parent-role"; printf '%s\n' "$2" > "${HOME}/.claude/state/parent-role/$1"; }
 
 # run <hook> <payload json> → stdout を返す
 run() { printf '%s' "$2" | bash "$1" 2>/dev/null; }
@@ -72,6 +74,10 @@ title_payload() { # <session_id そのもの> <tool_input.session_id> <title>
 file_payload() { jq -nc --arg s "$1" --arg f "$2" '{session_id:$s,tool_name:"Write",tool_input:{file_path:$f,content:"x"}}'; }
 bash_payload() { jq -nc --arg s "$1" --arg c "$2" '{session_id:$s,tool_name:"Bash",tool_input:{command:$c}}'; }
 ask_payload()  { jq -nc --arg s "$1" '{session_id:$s,tool_name:"AskUserQuestion",tool_input:{questions:[]}}'; }
+spawn_payload() { # <session_id> <title>
+  jq -nc --arg s "$1" --arg t "$2" \
+    '{session_id:$s,tool_name:"mcp__ccd_session__spawn_task",tool_input:{title:$t,prompt:"x",tldr:"x"}}'
+}
 archive_payload() { # <session_id> <tool_input.session_id> <tool_response (文字列)>
   jq -nc --arg s "$1" --arg t "$2" --arg r "$3" \
     '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__archive_session",tool_input:{session_id:$t,reason:"PR merged"},tool_response:$r}'
@@ -386,6 +392,59 @@ check 102 F '(e) session_id の無い payload → 素通し' allow \
 with_quotes; refuse local_child_1; refuse local_child_1
 check 103 F '(e) 別 session_id (別セッション。サブエージェントは親と同じ id) は pending を共有しない' allow \
   "$(decision "$(run "$F" "$(bash_payload local_other_2 'ls')")")"
+
+echo
+echo "=== G. require-spawn-task-title.sh (PreToolUse spawn_task。title を命名規約 3 形で検査 — Refs ippoan/alc-app-s3#135) ==="
+reset_markers
+check 104 G 'marker 無し + 規約違反 title → 素通し' allow \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p135-c-kiosk-measurements 題')")")"
+
+reset_markers; mk_parent "$SID"
+check 105 G 'parent marker (空) + 枝の子 → 通る' allow \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #c135-18 題')")")"
+check 106 G 'parent marker (空) + 自 issue の子 → 通る' allow \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[O] #p874-c987 題')")")"
+check 107 G 'parent marker (空) + 自 issue の子 (さらに分岐番号) → 通る' allow \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p874-c987-2 題')")")"
+check 108 G 'parent marker (空) + 後継の親 → 通る' allow \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '#p135 題')")")"
+
+reset_markers; mk_parent "$SID"
+check 109 G '不正: #c の後が語 (c-kiosk-measurements)' deny \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p135-c-kiosk-measurements 題')")")"
+check 110 G '不正: 分岐番号が数字でない (#c135-x)' deny \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #c135-x 題')")")"
+check 111 G '不正: 題が無い (#c135-18 のみ)' deny \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #c135-18')")")"
+check 112 G '不正: [S]/[O] が無い (#c135-18 題)' deny \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '#c135-18 題')")")"
+check 113 G '不正: [S]/[O] 以外の角括弧 ([X] #c135-18 題)' deny \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[X] #c135-18 題')")")"
+
+reset_markers; mk_parent_titled "$SID" '#p135 監督'
+check 114 G '親 marker が #p135 監督 + 子 title が #c136-… (issue 番号の取り違え)' deny \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #c136-1 題')")")"
+check 115 G '親 marker が #p135 監督 + 子 title が #c135-… (issue 番号が一致)' allow \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #c135-1 題')")")"
+
+reset_markers; mk_parent "$SID"
+check 116 G '親 marker が空 (改名前の古い marker 等) + #c136-… → 番号照合は飛ばして通る' allow \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #c136-1 題')")")"
+
+reset_markers; mk_child "$SID"
+check 117 G 'child marker だけ (parent marker 無し) + 違反 title → 素通し' allow \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p135-c-dtako 題')")")"
+
+reset_markers; mk_parent "$SID"
+check 118 G 'payload が壊れている (不正 JSON) → 素通し' allow \
+  "$(decision "$(printf '{not json' | bash "$G" 2>/dev/null)")"
+
+echo
+echo "--- G-1. session-role-log.sh (A) が書く marker の中身がタイトル 1 行になっている ---"
+reset_markers
+run "$A" "$(title_payload "$SID" self '#p135 監督')" >/dev/null
+check 119 A 'parent marker の中身が set_session_title の title と一致 (空ファイルではない)' '#p135 監督' \
+  "$(cat "${HOME}/.claude/state/parent-role/${SID}" 2>/dev/null)"
 
 echo
 echo "--- 実物の ~/.claude/state を汚していないことの確認 (HOME=$HOME) ---"
