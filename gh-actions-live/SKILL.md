@@ -10,6 +10,9 @@ description: >
   Access 保護下の zone を Linux から叩くときの承認にも使う。トリガー:
   「Access ログイン」「cloudflared access login」「wrangler dev --remote が止まる」
   「access-login」「Approve が押せない」等。
+  PR 作成時に bridge へ自動で繋ぐ Claude Mod (pr-bridge-watch、function hooks) の導入・挙動・
+  archive との関係にも使う。トリガー: 「pr-bridge-watch」「Claude Mods」「function hooks」
+  「CLAUDE_CODE_ENABLE_FUNCTION_HOOKS」「PR を作ったら自動で見張る」「Monitor が archive を塞ぐ」「[pr-bridge-watch:stop]」等。
 ---
 
 # gh-actions-live — Actions の変化を push で受ける
@@ -54,6 +57,44 @@ Monitor({ ws: { url: "ws://127.0.0.1:8799/watch?repo=ippoan/rust-alc-api&workflo
   bridge が落ちれば socket が閉じる
 - watch 対象の repo は拡張の設定 (`set-config` の `repos`、**全セッション共通**)。無い repo は足す。
   **絞るために repos を減らさない** (他セッションの見張りが止まる)
+
+### PR を作ると自動で繋がる (pr-bridge-watch、Claude Mod)
+
+**`gh pr create` / `pr-push.sh` の後に自分で Monitor を張らない。** plugin `pr-bridge-watch@gh-actions-live`
+(ippoan/gh-actions-live の `mods/pr-bridge-watch`、function hooks = Claude Mods) が Bash の `tool.call` を包み、
+PR の URL が出たら `gh pr view --json headRefName` の branch で `/watch?repo=…&ref=<branch>` に Monitor を張る。
+tool 結果の直後に context が 1 行来るので、それを読んで判断する:
+
+| context | 意味 / やること |
+|---|---|
+| `…に Monitor で繋いだ (task <id>)。local の branch が消えたら次の Actions 通知で…自動で止める` | 何もしない。通知を待つ |
+| `local に branch <ref> が見つからず突合では止まらない` | 別 clone で作った PR 等。要らなくなったら自分で `TaskStop` |
+| `bridge (…) に届かない。…戻ったら Monitor({ … })` | bridge を直し (§1 bridge の状態)、書いてある引数で自分で張る |
+| `Monitor を張れなかった (…)` / `Monitor の起動に失敗 (…)` | 書いてある引数で自分で張る |
+| `task ID が取れず自動では止められない` | 要らなくなったら自分で `TaskStop` (残すと archive が塞がる) |
+| `branch が分からず bridge に繋いでいない` | `ref=<branch>` で自分で張る |
+| (何も来ない) | 同じセッション・同じ branch は二度張らない仕様。または mod が読まれていない (下の導入) |
+
+- **Monitor は archive を塞がないように止まる。** persistent な Monitor は `archive_session` を「still has live work」で
+  拒否させる。mod の止めどきは 3 つ (ログに `…を止めた` が出る):
+  - **Actions 通知 (task-notification) が来るたびに全部の見張りを local branch と突合**し、消えていたら `TaskStop`。
+    PR は親が作る → 子の archive + worktree-janitor で branch が消える → 親に次の通知が来た時点で止まる
+    (通知が来るまでは残る。gh の polling はしない)
+  - `archive_session { session_id: "self" }` の直前に全部止める
+  - **他のセッションの archive が live work で断られたら**、mod が相手へ `[pr-bridge-watch:stop]` 入りの
+    `send_message` を送って 3 秒後に 1 回やり直す。相手の mod はそれを飲み込み (turn を起こさない) 全部止める。
+    やり直しの結果に `やり直して畳めた` / `まだ畳めない` が添えられる。**`[pr-bridge-watch:stop]` が本文で届いたら**
+    相手の mod が古い / 入っていない — `TaskStop` で Monitor を止めるだけで返信は要らない
+- Release Wave / タグの CI は ref が branch ではないので mod は張らない。配信まで見るなら §1 の注意どおり別に張る
+- 導入 (Claude Code **2.1.260 以上**。デスクトップアプリの CLI は `~/.claude/remote/ccd-cli/<版>`):
+  ```
+  # ~/.claude/settings.json の env に "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1"
+  claude plugin marketplace add ippoan/gh-actions-live
+  claude plugin install pr-bridge-watch@gh-actions-live
+  ```
+  入れた / 更新した plugin は**起動中のセッションでは読み直されない** (新しいセッションから効く)。
+  install 時の「userConfig option not yet set」は既定値 (`bridgeUrl` = `ws://127.0.0.1:8799`) で動くので無視してよい
+- mod を直すときは ippoan/gh-actions-live の README「PR を作ったら bridge に自動で繋ぐ」と CLAUDE.md
 
 bridge の状態:
 - `curl -s localhost:8799/` の `clients` に `extension-bg@<win tailscale ip>` が居れば拡張が生きている。
@@ -179,3 +220,7 @@ bridge に認証は無く、8799 に届く者が Chrome で任意のページを
 - 詳細な経緯・未解決は repo の issue と memory (`gh-actions-live-bridge`, `chrome-policy-needs-hklm-permachine`,
   `ps1-needs-utf8-bom-on-japanese-windows`)
 - `ref=main` だけの /watch で配信を待たない (Release Wave は ref 無し、タグの CI は ref がタグ名。§1)
+- **mod (pr-bridge-watch) で `$` を変数に代入しない。** `claude plugin validate` が拒否し、module ごと読まれない
+  (install は成功して見える)。dispatch を越える timer は `session.start` で `$.clock.every(…)` の閉包を持つ
+- **plugin が張った Monitor の task ID は transcript に残らない。** 旧版 (task ID を context に出さない) が張った
+  Monitor は後から `TaskStop` できず、そのセッションの archive を塞ぐ → アプリのタスク一覧から止める
