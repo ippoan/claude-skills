@@ -20,6 +20,10 @@
 bash parent-role/hooks/test-parent-role-hooks.sh
 ```
 
+**CI でも毎 PR 回る** — `.github/workflows/test.yml` が共有 workflow の `test_script` に
+このパスを渡している。渡していなかった間、共有 workflow の test job は
+`if: inputs.test_script != ''` で skip され、shellcheck しか走っていなかった。
+
 **★ hook は設置したセッションでは効かない** (settings watcher は session 開始時の設定しか見ない。
 2026-09-09 実測)。設置後は新しいセッションで確かめる。
 

@@ -14,3 +14,17 @@ jobs:
     uses: ippoan/ci-workflows/.github/workflows/shell-ci.yml@main
     with:
       severity: warning
+      # parent-role の hook 受け入れテスト (142 check)。これを渡さないと共有 workflow の
+      # test job は `if: inputs.test_script != ''` で **skip** され、shellcheck しか走らない。
+      # 実際 #184 (hook を +136 行書き換えた PR) でも test job は skipping のままで、
+      # green は人が手で回した結果でしかなかった。回し忘れれば誰も気づけないので CI で回す。
+      #
+      # この repo の他のテストは knowledge-check.yml が既に回している
+      # (knowledge/tests の unittest と public-text-guard/tests/run_tests.py)。
+      # だから aggregator は要らず、ここは 1 本を指すだけでよい。
+      #
+      # test_needs_gh は付けない — このテストは `gh pr create …` を**文字列として** hook に
+      # 食わせて判定を見るだけで、gh を実行しないため GH_TOKEN は要らない。
+      # 依存は jq だけで、共有 workflow が実行前に gh + jq の存在を確かめる。
+      # HOME を一時ディレクトリへ差し替えて回るので runner の state も汚さない。
+      test_script: parent-role/hooks/test-parent-role-hooks.sh
