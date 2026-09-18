@@ -327,8 +327,8 @@ compare API 1 発で裏を取る:
 | `block-parent-repo-writes.sh` | PreToolUse `Edit` / `Write` / `NotebookEdit` | parent marker 有 + 書き先の上流に `.git` (**ファイル = worktree / ディレクトリ = main clone のどちらでも**) → **deny** | parent marker が無ければ素通し |
 | `block-parent-commits.sh` | PreToolUse `Bash` | parent marker 有 + `git commit` / `push` / `apply` / `am` / `cherry-pick` → **deny**。`gh pr create` / `gh issue create` / `gh issue comment` / `git branch -D` / `git worktree add`\|`remove`\|`list` / 読み取り系はすべて**許可** | 同上 |
 | `block-child-asks-user.sh` | PreToolUse `AskUserQuestion` | child marker 有 → **deny** (親へ `send_message` の `[質問]` に寄せる) | child marker が無ければ素通し |
-| `warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗なので `PostToolUseFailure` でしか届かない — Refs ippoan/claude-skills#163) | payload 全体 (JSON 文字列) に「was not archived」が含まれていれば**理由を問わず**拾う (文言ごとに一致条件を足す設計は同じ穴を繰り返す — Refs ippoan/claude-skills#167)。回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」**、**2 回目以降は `[決定] ユーザー指示で self-archive` の本文を hook が完成形で出す** (拒否文言の原文 / 基準 3 点 / `user-quotes.txt` の原文 / report-to-parent の例外 (b) 条文を実行時抽出 / `archive_session self` を呼ぶ指示まで埋め、親が埋めるのは PR 番号 1 か所だけ)。対象が `self` なら「再試行しない。サイドバーかタブを閉じてもらう」。**塞がない** (exit 2 で文面を返すだけ)。ただし 2 回目以降で `user-quotes.txt` に原文があり、その子への送信が 2 通未満なら、`~/.claude/state/archive-refused/pending-<session_id>` に子の session_id を 1 行書く (次の行の hook が読む) | 拒否文言でなければ素通し |
-| `require-archive-decision-sent.sh` | PreToolUse `*` (全ツール) | `pending-<session_id>` がある間、**`send_message` で宛先 = pending の子 かつ message が `[決定] ユーザー指示で self-archive` で始まる** (先頭の空白・改行は無視) もの・`list_sessions`・`archive_session`・`ToolSearch`・**`Agent`** (2026-09-11、subagent_type では絞らない。本文が手元に無ければ agent (session-archiver 等) に `archive_session` を打たせ、hook の文面を原文で持ち帰らせる経路 — Refs ippoan/alc-app-s3#135) 以外を **deny**。正しい送信で pending を消し、送信数を `sent-<session_id>-<子>` に数える (2 通で打ち止め = 3 通目は送らせない)。解除はその送信か、ユーザー本人の `rm` だけ | pending が無い / session_id が取れなければ素通し |
+| `warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗なので `PostToolUseFailure` でしか届かない — Refs ippoan/claude-skills#163) | **検出**は payload 全体 (JSON 文字列) に「was not archived」が含まれるかだけ — **理由を問わない** (文言ごとに**検出**条件を足す設計は同じ穴を繰り返す — Refs ippoan/claude-skills#167)。回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」**、**2 回目以降は `[決定] ユーザー指示で self-archive` の本文を完成形で出す** (拒否文言の原文 / 基準 3 点 / `user-quotes.txt` の原文 / report-to-parent の例外 (b) 条文を実行時抽出 / `archive_session self` を呼ぶ指示まで埋め、親が埋めるのは PR 番号 1 か所だけ)。**★ remedy (次の一手) だけは文言で 3 分岐** (2026-09-18。`pinned or in use` / `still has live work` / それ以外 — **詳細は [[task-split]] §6 の表**。知らない文言は従来どおり)。**塞がない** (exit 2 で文面を返すだけ)。ただし**中継が正解の回**で 2 回目以降・`user-quotes.txt` に原文があり・その子への送信が 2 通未満なら、`~/.claude/state/archive-refused/pending-<session_id>` に子の session_id を 1 行書く (次の行の hook が読む) | 拒否文言でなければ素通し |
+| `require-archive-decision-sent.sh` | PreToolUse `*` (全ツール) | `pending-<session_id>` がある間、**`send_message` で宛先 = pending の子 かつ message が `[決定] ユーザー指示で self-archive` で始まる** (先頭の空白・改行は無視) もの・`list_sessions`・`archive_session`・`ToolSearch`・**`Agent`** (2026-09-11、subagent_type では絞らない。本文が手元に無ければ agent (session-archiver 等) に `archive_session` を打たせ、hook の文面を原文で持ち帰らせる経路 — Refs ippoan/alc-app-s3#135)・**`get_session` / `set_pinned`** (2026-09-18。`pinned` が原因の回は unpin が正解で中継は効かないため、塞いだままにしない) 以外を **deny**。正しい送信で pending を消し、送信数を `sent-<session_id>-<子>` に数える (2 通で打ち止め = 3 通目は送らせない)。解除はその送信か、ユーザー本人の `rm` だけ | pending が無い / session_id が取れなければ素通し |
 | `require-spawn-task-title.sh` | PreToolUse `mcp__ccd_session__spawn_task` | parent marker 有 + title が §1 の 3 形 (枝の子・自 issue の子・後継の親) のどれにも完全に当たらなければ **deny**。marker (親自身のタイトル) が `#p<M> ` で始まっていれば、title から取った issue 番号と `<M>` の一致も見る (不一致は別案件の取り違えとして deny) | parent marker が無い / payload が壊れている / jq が無い / session_id か title が空 → 素通し |
 
 **「書き込み全部禁止」にはしていない。** 親は scratchpad に計画を書き、memory を更新し、
@@ -614,9 +614,28 @@ CPU は「いま動いている」の**陽性証拠**にしかならず、0 を�
   they can also archive it from the sidebar.」と
   「it still has live work (an agent run, a Remote Control client, a queued message
   or a background task). Wait or ask the user; they can also archive it from the
-  sidebar.」と「it is still working (a turn in progress)」の 3 通り。**拒否文言が何であっても手順は同じ** —
-  「still has live work」だから例外 (b) の対象外、とは読まない
-  (`warn-archive-refused.sh` は文言を問わず `was not archived` だけで拾う — §4.5)。
+  sidebar.」と「it is still working (a turn in progress)」の 3 通り。
+  **「still has live work」だから例外 (b) の対象外、とは読まない**
+  (`warn-archive-refused.sh` は**検出**は文言を問わず `was not archived` だけで拾う — §4.5)。
+
+  **★ ただし「次の一手」は文言で変わる** (2026-09-18。上流は 4 分岐 `running` /
+  `losable_work` / `pinned` / `on_screen` を計算しているのに、文言が 2 種に潰れている —
+  anthropics/claude-code#93259 / #93269、どちらも open・未修正)。
+  **文面は `warn-archive-refused.sh` が文言を見て出し分ける**ので、親は出てきた手順に従えばよい:
+
+  | 拒否文言 | 実際の原因 | 次の一手 |
+  |---|---|---|
+  | `pinned or in use` | `pinned` か `on_screen` | **まず unpin** — `get_session` で `pinned` を見て `set_pinned` で外し、もう一度打つ。**`pinned` は待っても永久に消えず、子の self-archive も塞ぐ**ので中継より先にこれ。外れていれば `on_screen` で、**`on_screen` は self では発火しない** (`!r` guard) ので `[決定]` 中継が効く |
+  | `still has live work` | agent run / Remote Control / queued message / background task | **子へ何も送らず** 1 回打つ (`send_message` 自体が queued message = 原因の 1 つ)。`[決定]` は 2 通で打ち止め |
+  | `a turn in progress` | `running` | 止まるのを待つ (`isRunning` / `lastActivityAt`) |
+
+  **★★ `live work` が消えないときは #93270 の leak を疑う。** **Workflow / agent を mid-run で
+  `TaskStop` すると agent run が terminal record 無しで残り、そのセッションは生涯 archive 不可**に
+  なる (`ps` は空、`TaskStop` は "No task found" を返すのに hold だけ残る —
+  anthropics/claude-code#93270)。**この状態では再試行も子の self-archive も通らず、
+  サイドバーからの archive だけが効く**。`[決定]` を 2 通送っても続いたら leak と見なし、
+  ユーザーへ 1 行 (サイドバー) + 台帳へ回す。**予防 = 畳む予定のセッションで mid-run の
+  `TaskStop` をしない** (完走を待つ) — 永久ブロックの唯一の作り方がこれ。
   子に背景タスク (Monitor / `tail -f` / `run_in_background`) の停止を 1 回頼んでよいが、
   子が「無い」と返したら下の手順に戻る。**「ユーザー操作待ち」で止まらない。**
   **畳む前に子へ送らない** ([PR] 通知・「畳んでよい」・背景タスクの停止依頼も送らない)。
