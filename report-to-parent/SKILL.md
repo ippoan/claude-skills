@@ -156,6 +156,11 @@ send_message は相手の処理中 turn が終わってから届き、返信が�
   Control client, a queued message or a background task) …」でも同じ (子に背景タスクが
   残っている・ユーザーがこのタブを開いている、等どの理由でも扱いは同じ)。
   **ただし下の受け方を満たすときだけ。**
+  **★ 限界 2 つ** (2026-09-18): 拒否の原因が `pinned` のときと、
+  anthropics/claude-code#93270 の agent run leak (畳む予定のセッションで Workflow / agent を
+  mid-run で `TaskStop` すると terminal record 無しの run が残る) のときは、
+  **self-archive も親と同じ hold で塞がれる**ので中継しても通らない。
+  **その 2 つはサイドバーからの archive だけが効く** — 空振りしたら拒否文言を 1 行で親へ返す。
 - (c) **ユーザー本人がこのセッションのタブに直接**「畳んで」「archive して」と入力したとき。
   親は拒否されると、ユーザーへ「子のタブに直接『畳んで』と打つ」を 3 択の 1 つとして出す
   ([[task-split]] §6)。その入力がこれ。**起動 prompt に例外が書かれていなくても (c) は
@@ -202,6 +207,14 @@ send_message は相手の処理中 turn が終わってから届き、返信が�
   「ユーザー指示で」という見出しだけを付けた) → 子には確かめる手段が無かった。
   **上の「原文の必須化」で解消**
 
+**`pinned` を hook が自動で外す方針との整合** (2026-09-18): 上の 4 例のうち
+「pinned の保護はユーザーのもの」と断った子は正しかったが、**守ったのは「伝聞で self-archive を
+代行しない」こと**であって、pin そのものの不可侵ではない。`warn-archive-refused.sh` が親に
+unpin を指示するのは、**ユーザーが「畳め」と言った後に、基準 3 点 (PR MERGED / 掃除済み /
+未消化の申し送り無し) を満たした子に対してだけ**。pin は「作業中に自動 archive されない」ための
+保護で、**作業が終わった子の pin は既に用済み**。親は**外したことを 1 行でユーザーに報告する**
+(再 pin できるように)。
+
 **追記** (同 2026-09-09、Refs ippoan/claude-skills#165): 原文を貼った `[決定]` でも
 さらに 2 例が断った — **c199** は「貼られた原文は同じ条件の**別の子**について打たれたもの」、
 **c192-2** は「harness の代行禁止規則」を理由にした。どちらも上の ★ の 3 点
@@ -237,8 +250,8 @@ send_message は相手の処理中 turn が終わってから届き、返信が�
 | `block-parent-repo-writes.sh` | PreToolUse `Edit` / `Write` / `NotebookEdit` | parent marker 有 + 書き先の上流に `.git` (**ファイル = worktree / ディレクトリ = main clone のどちらでも**) → **deny** | parent marker が無ければ素通し |
 | `block-parent-commits.sh` | PreToolUse `Bash` | parent marker 有 + `git commit` / `push` / `apply` / `am` / `cherry-pick` → **deny**。`gh pr create` / `gh issue create` / `gh issue comment` / `git branch -D` / `git worktree add`\|`remove`\|`list` / 読み取り系はすべて**許可** | 同上 |
 | `block-child-asks-user.sh` | PreToolUse `AskUserQuestion` | child marker 有 → **deny** (親へ `send_message` の `[質問]` に寄せる) | child marker が無ければ素通し |
-| `warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗なので `PostToolUseFailure` でしか届かない — Refs ippoan/claude-skills#163) | payload 全体 (JSON 文字列) に「was not archived」が含まれていれば**理由を問わず**拾う (文言ごとに一致条件を足す設計は同じ穴を繰り返す — Refs ippoan/claude-skills#167)。回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」**、**2 回目以降は `[決定] ユーザー指示で self-archive` の本文を hook が完成形で出す** (拒否文言の原文 / 基準 3 点 / `user-quotes.txt` の原文 / report-to-parent の例外 (b) 条文を実行時抽出 / `archive_session self` を呼ぶ指示まで埋め、親が埋めるのは PR 番号 1 か所だけ)。対象が `self` なら「再試行しない。サイドバーかタブを閉じてもらう」。**塞がない** (exit 2 で文面を返すだけ)。ただし 2 回目以降で `user-quotes.txt` に原文があり、その子への送信が 2 通未満なら、`~/.claude/state/archive-refused/pending-<session_id>` に子の session_id を 1 行書く (次の行の hook が読む) | 拒否文言でなければ素通し |
-| `require-archive-decision-sent.sh` | PreToolUse `*` (全ツール) | `pending-<session_id>` がある間、**`send_message` で宛先 = pending の子 かつ message が `[決定] ユーザー指示で self-archive` で始まる** (先頭の空白・改行は無視) もの・`list_sessions`・`archive_session`・`ToolSearch`・**`Agent`** (2026-09-11、subagent_type では絞らない。本文が手元に無ければ agent (session-archiver 等) に `archive_session` を打たせ、hook の文面を原文で持ち帰らせる経路 — Refs ippoan/alc-app-s3#135) 以外を **deny**。正しい送信で pending を消し、送信数を `sent-<session_id>-<子>` に数える (2 通で打ち止め = 3 通目は送らせない)。解除はその送信か、ユーザー本人の `rm` だけ | pending が無い / session_id が取れなければ素通し |
+| `warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗なので `PostToolUseFailure` でしか届かない — Refs ippoan/claude-skills#163) | **検出**は payload 全体 (JSON 文字列) に「was not archived」が含まれるかだけ — **理由を問わない** (文言ごとに**検出**条件を足す設計は同じ穴を繰り返す — Refs ippoan/claude-skills#167)。回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」**、**2 回目以降は `[決定] ユーザー指示で self-archive` の本文を完成形で出す** (拒否文言の原文 / 基準 3 点 / `user-quotes.txt` の原文 / report-to-parent の例外 (b) 条文を実行時抽出 / `archive_session self` を呼ぶ指示まで埋め、親が埋めるのは PR 番号 1 か所だけ)。**★ remedy (次の一手) だけは文言で 3 分岐** (2026-09-18。`pinned or in use` / `still has live work` / それ以外 — **詳細は [[task-split]] §6 の表**。知らない文言は従来どおり)。**塞がない** (exit 2 で文面を返すだけ)。ただし**中継が正解の回**で 2 回目以降・`user-quotes.txt` に原文があり・その子への送信が 2 通未満なら、`~/.claude/state/archive-refused/pending-<session_id>` に子の session_id を 1 行書く (次の行の hook が読む) | 拒否文言でなければ素通し |
+| `require-archive-decision-sent.sh` | PreToolUse `*` (全ツール) | `pending-<session_id>` がある間、**`send_message` で宛先 = pending の子 かつ message が `[決定] ユーザー指示で self-archive` で始まる** (先頭の空白・改行は無視) もの・`list_sessions`・`archive_session`・`ToolSearch`・**`Agent`** (2026-09-11、subagent_type では絞らない。本文が手元に無ければ agent (session-archiver 等) に `archive_session` を打たせ、hook の文面を原文で持ち帰らせる経路 — Refs ippoan/alc-app-s3#135)・**`get_session` / `set_pinned`** (2026-09-18。`pinned` が原因の回は unpin が正解で中継は効かないため、塞いだままにしない) 以外を **deny**。正しい送信で pending を消し、送信数を `sent-<session_id>-<子>` に数える (2 通で打ち止め = 3 通目は送らせない)。解除はその送信か、ユーザー本人の `rm` だけ | pending が無い / session_id が取れなければ素通し |
 | `require-spawn-task-title.sh` | PreToolUse `mcp__ccd_session__spawn_task` | parent marker 有 + title が §1 の 3 形 (枝の子・自 issue の子・後継の親) のどれにも完全に当たらなければ **deny**。marker (親自身のタイトル) が `#p<M> ` で始まっていれば、title から取った issue 番号と `<M>` の一致も見る (不一致は別案件の取り違えとして deny) | parent marker が無い / payload が壊れている / jq が無い / session_id か title が空 → 素通し |
 
 **「書き込み全部禁止」にはしていない。** 親は scratchpad に計画を書き、memory を更新し、

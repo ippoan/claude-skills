@@ -93,6 +93,11 @@ archive_payload_blocks() { # tool_response が content block 配列で来る形
 
 REFUSED='Session local_child_1 was not archived: the app is keeping it for the user (pinned or in use). Wait or ask the user; they can also archive it from the sidebar.'
 LIVE_WORK='Session local_child_1 was not archived: it still has live work (an agent run, a Remote Control client, a queued message or a background task). Wait or ask the user; they can also archive it from the sidebar.'
+# remedy 3 分岐のどれにも当たらない未知の文言。**従来どおりの経路 (1 回目 = 再試行 1 回 →
+# 2 回目 = [決定] 完成形) に落ちること**を見るのに使う (#167 の穴を開け直していないかの回帰)。
+# ★ 2026-09-18: 以前この経路は REFUSED (pinned or in use) で見ていたが、app_hold は
+#   n <= 2 のあいだ unpin 指示に変わったので、**従来経路の期待値はこちらの文言へ移設した**。
+UNKNOWN_HOLD='Session local_child_1 was not archived: it is still working (a turn in progress). Wait or ask the user; they can also archive it from the sidebar.'
 OK_RESP='Archived session local_child_1.'
 OTHER_ERROR='Session local_child_1 could not be archived because of a network timeout. Try again later.'
 
@@ -183,7 +188,7 @@ run "$A" "$(title_payload "$SID" self '#p134 NFC タイムカード端末の監�
 check 27 A '親を名乗り直すと child marker は消える' parent "$(state_of "$SID")"
 
 echo
-echo "=== E. warn-archive-refused.sh (PostToolUseFailure。拒否の瞬間に §6 の次の一手を出す。理由を問わない — Refs #167) ==="
+echo "=== E. warn-archive-refused.sh (PostToolUseFailure。拒否の瞬間に §6 の次の一手を出す。**検出**は理由を問わない — Refs #167。**remedy の出し分けは H**) ==="
 reset_markers
 check 28 E '成功応答 → 黙って素通し (exit 0)' 0 "$(run_rc "$E" "$(archive_payload "$SID" local_child_1 "$OK_RESP")")"
 check 29 E '"was not archived" を含まない失敗 → 素通し (archive 拒否ではない)' 0 \
@@ -193,12 +198,15 @@ reset_markers
 check 30b E '"still has live work" の拒否も同じく exit 2 (文言を問わない — #167)' 2 \
   "$(run_rc "$E" "$(archive_payload "$SID" local_child_5 "$LIVE_WORK")")"
 
-# ↑ で数えたので、証跡を作り直して 1 回目・2 回目を順に見る (pinned 文言)
+# ↑ で数えたので、証跡を作り直して 1 回目・2 回目を順に見る。
+# ★ 2026-09-18: ここは **未知の文言** (UNKNOWN_HOLD) で回す。app_hold (pinned or in use) は
+#   n <= 2 が unpin 指示に変わったため、「2 回目で [決定] 完成形」を見るこの一連は
+#   **文言定数を未知の文言へ差し替えて従来経路のまま**にした (app_hold の 3 回目は H-1 で別に見る)。
 reset_markers
-out1=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
+out1=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$UNKNOWN_HOLD")")
 check 31 E '1 回目の文面: 「再試行は 1 回まで」を含む' yes "$(has "$out1" '再試行は 1 回まで')"
 check 32 E '1 回目の文面: 3 択はまだ出さない' no "$(has "$out1" 'サイドバー')"
-out2=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
+out2=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$UNKNOWN_HOLD")")
 check 33 E '2 回目の文面: 「もう再試行しない」を含む' yes "$(has "$out2" 'もう再試行しない')"
 check 34 E '2 回目の文面: 3 択 (タブを閉じる)' yes "$(has "$out2" 'タブを閉じる')"
 check 35 E '2 回目の文面: 3 択 (サイドバーから archive)' yes "$(has "$out2" 'サイドバーから archive')"
@@ -207,7 +215,7 @@ check 37 E '2 回目の文面: 待たずに続行 + 次の turn は Agent で se
   "$(has "$out2" '次の turn は Agent で session-archiver')"
 check 38 E '2 回目の文面: [決定] の見出し (対象 session_id 入り)' yes \
   "$(has "$out2" '[決定] ユーザー指示で self-archive — local_child_1 へ')"
-check 39 E '2 回目の文面: 拒否文言の原文がそのまま入っている' yes "$(has "$out2" "$REFUSED")"
+check 39 E '2 回目の文面: 拒否文言の原文がそのまま入っている' yes "$(has "$out2" "$UNKNOWN_HOLD")"
 check 41 E '証跡: ~/.claude/state/archive-refused/<sid>-<target> = 2' 2 "$(cat "${HOME}/.claude/state/archive-refused/${SID}-local_child_1" 2>/dev/null)"
 out3=$(run_err "$E" "$(archive_payload_blocks "$SID" local_child_1 "$REFUSED")")
 check 42 E 'tool_response が content block 配列でも拾う (3 回目)' yes "$(has "$out3" '3 回目')"
@@ -229,28 +237,30 @@ reset_markers
 outs=$(run_err "$E" "$(archive_payload "$SID" self "$REFUSED")")
 check 46 E 'self の拒否 → 「再試行しない」+ サイドバー / タブを閉じる' yes "$(has "$outs" 'サイドバーから archive')"
 check 47 E 'self の拒否 → 親へ送る話にしない' yes "$(has "$outs" '親へ送る話でも')"
-check 48 E 'self の拒否は証跡を作らない (再試行の回数を数える対象ではない)' none \
-  "$( [ -e "${HOME}/.claude/state/archive-refused/${SID}-self" ] && echo made || echo none)"
+# ★ 2026-09-18 (意図した挙動変更): self でも証跡を数える。escalate (1 回目 = unpin /
+#   2 回目 = サイドバー) に n が要るため、加算を self 判定より前に移した。
+check 48 E 'self の拒否も証跡を数える (escalate に n が要る)' 1 \
+  "$(cat "${HOME}/.claude/state/archive-refused/${SID}-self" 2>/dev/null)"
 check 49 E 'tool_response 無し ("was not archived" が無い) → 素通し' 0 \
   "$(run_rc "$E" "$(jq -nc --arg s "$SID" '{session_id:$s,tool_name:"mcp__ccd_session_mgmt__archive_session",tool_input:{session_id:"x"}}')")"
 # PostToolUseFailure 形 (tool_response 無し、error キーに拒否文言) — Refs #163
 reset_markers
-outf1=$(run_err "$E" "$(archive_failure_payload "$SID" local_child_1 "$REFUSED")")
+outf1=$(run_err "$E" "$(archive_failure_payload "$SID" local_child_1 "$UNKNOWN_HOLD")")
 check 50 E 'PostToolUseFailure 形 (error キー) 1 回目: 「再試行は 1 回まで」' yes "$(has "$outf1" '再試行は 1 回まで')"
-outf2=$(run_err "$E" "$(archive_failure_payload "$SID" local_child_1 "$REFUSED")")
+outf2=$(run_err "$E" "$(archive_failure_payload "$SID" local_child_1 "$UNKNOWN_HOLD")")
 check 51 E 'PostToolUseFailure 形 (error キー) 2 回目: 3 択 (サイドバーから archive)' yes "$(has "$outf2" 'サイドバーから archive')"
 check 52 E 'PostToolUseFailure 形: 証跡 = 2' 2 "$(cat "${HOME}/.claude/state/archive-refused/${SID}-local_child_1" 2>/dev/null)"
 reset_markers
 outfs=$(run_err "$E" "$(archive_failure_payload "$SID" self "$REFUSED")")
 check 53 E 'PostToolUseFailure 形 self の拒否 → 「再試行しない」+ 親へ送る話にしない' yes "$(has "$outfs" '親へ送る話でも')"
-check 54 E 'PostToolUseFailure 形 self は証跡を作らない' none \
-  "$( [ -e "${HOME}/.claude/state/archive-refused/${SID}-self" ] && echo made || echo none)"
+check 54 E 'PostToolUseFailure 形 self も証跡を数える (同上)' 1 \
+  "$(cat "${HOME}/.claude/state/archive-refused/${SID}-self" 2>/dev/null)"
 
 echo
 echo "--- E-3. [決定] の本文が完成形になっている ((b) は skill file が無いときのフォールバック) — Refs #167 ---"
 reset_markers
-outb1=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
-outb2=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
+outb1=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$UNKNOWN_HOLD")")
+outb2=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$UNKNOWN_HOLD")")
 check 55 E '基準 3 点: PR の空欄は 1 か所だけ (<PR owner/repo#N>)' yes \
   "$(has "$outb2" 'PR <PR owner/repo#N> (MERGED)')"
 check 56 E '基準 3 点: 掃除済み (worktree・branch・コンテナ)' yes \
@@ -299,8 +309,8 @@ FIXTURE
 mkdir -p "${HOME}/.claude/state/archive-refused"
 printf '2026-09-10 さっさとたため\n2026-09-10 いつまでもおなじことやってる もう２０回くらいやってる なおせ\n' \
   > "${HOME}/.claude/state/archive-refused/user-quotes.txt"
-run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")" >/dev/null
-outq2=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
+run_err "$E" "$(archive_payload "$SID" local_child_1 "$UNKNOWN_HOLD")" >/dev/null
+outq2=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$UNKNOWN_HOLD")")
 check 74 E 'skill file が読めるとき: fixture の抜粋が入る' yes "$(has "$outq2" 'fixture-marker-for-extraction-test-9f3c1')"
 check 75 E 'skill file が読めるとき: 「条文を読めなかった」は出ない' no "$(has "$outq2" '条文を読めなかった')"
 check 76 E 'user-quotes.txt があるとき: 見出しが出る' yes \
@@ -362,7 +372,11 @@ check 91 F '(b) ToolSearch → 許可 (deferred の send_message を読む手段
   "$(decision "$(run "$F" "$(tool_payload "$SID" ToolSearch)")")"
 check 91.1 F '(b) Agent → 許可 (session-archiver 等に archive_session を打たせる経路。Refs ippoan/alc-app-s3#135)' allow \
   "$(decision "$(run "$F" "$(tool_payload "$SID" Agent)")")"
-check 91.2 F '(b) Bash は引き続き deny (Agent 以外まで緩めていないことの確認)' deny \
+check 91.3 F '(b) get_session → 許可 (pinned の確認。pinned が原因の回は unpin が正解 — #93259)' allow \
+  "$(decision "$(run "$F" "$(tool_payload "$SID" mcp__ccd_session_mgmt__get_session)")")"
+check 91.4 F '(b) set_pinned → 許可 (pin を外して打ち直す経路を塞がない)' allow \
+  "$(decision "$(run "$F" "$(tool_payload "$SID" mcp__ccd_sidebar__set_pinned)")")"
+check 91.2 F '(b) Bash は引き続き deny (Agent / get_session / set_pinned 以外まで緩めていないことの確認)' deny \
   "$(decision "$(run "$F" "$(bash_payload "$SID" 'ls')")")"
 
 echo "--- F-c. 宛先・見出しが違う send_message は塞ぐ ---"
@@ -445,6 +459,59 @@ reset_markers
 run "$A" "$(title_payload "$SID" self '#p135 監督')" >/dev/null
 check 119 A 'parent marker の中身が set_session_title の title と一致 (空ファイルではない)' '#p135 監督' \
   "$(cat "${HOME}/.claude/state/parent-role/${SID}" 2>/dev/null)"
+
+echo
+echo "=== H. warn-archive-refused.sh の remedy 3 分岐 (2026-09-18。**検出**は #167 のまま・**次の一手だけ**文言で分ける) ==="
+# 上流 (Claude Desktop) は 4 分岐 (running / losable_work / pinned / on_screen) を計算しているのに
+# 文言が 2 種に潰れている — anthropics/claude-code#93259 / #93269 / #93270 (いずれも open)。
+PENDING_H="${HOME}/.claude/state/archive-refused/pending-${SID}"
+
+echo "--- H-1. app_hold (pinned or in use): n <= 2 は **unpin が先**。pending を立てない ---"
+reset_markers; with_quotes
+ah1=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
+check 120 E 'app_hold 1 回目: get_session で pinned を見ろと出す' yes "$(has "$ah1" 'get_session')"
+check 121 E 'app_hold 1 回目: set_pinned で外せと出す' yes "$(has "$ah1" 'set_pinned')"
+check 122 E 'app_hold 1 回目: pending を立てない (立てると親が unpin すら打てない)' no "$(exists "$PENDING_H")"
+check 123 E 'app_hold 1 回目: [決定] 本文は出さない (pin には中継が効かない)' no \
+  "$(has "$ah1" '[決定] ユーザー指示で self-archive')"
+ah2=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
+check 124 E 'app_hold 2 回目: まだ unpin 経路 (pending を立てない)' no "$(exists "$PENDING_H")"
+check 125 E 'app_hold 2 回目: 上流 issue 93259 を示す' yes "$(has "$ah2" '93259')"
+ah3=$(run_err "$E" "$(archive_payload "$SID" local_child_1 "$REFUSED")")
+check 126 E 'app_hold 3 回目: 従来の [決定] 完成形へ落ちる' yes \
+  "$(has "$ah3" '[決定] ユーザー指示で self-archive — local_child_1 へ')"
+check 127 E 'app_hold 3 回目: pending が立つ (中継が正解の回)' yes "$(exists "$PENDING_H")"
+
+echo "--- H-2. app_hold + self: on_screen は self では発火しない ⇒ 原因は pinned で確定 ---"
+reset_markers
+sh1=$(run_err "$E" "$(archive_payload "$SID" self "$REFUSED")")
+check 128 E 'self app_hold 1 回目: 「原因は pinned で確定」と断言する' yes "$(has "$sh1" '原因は pinned で確定')"
+check 129 E 'self app_hold 1 回目: set_pinned で外して打ち直す手順を出す' yes "$(has "$sh1" 'set_pinned')"
+sh2=$(run_err "$E" "$(archive_payload "$SID" self "$REFUSED")")
+check 130 E 'self app_hold 2 回目: サイドバーへ escalate (証跡 n を使った出し分け)' yes \
+  "$(has "$sh2" 'アプリ側でしか外せません')"
+
+echo "--- H-3. live_work: [決定] を 2 通送っても続くなら #93270 の agent run leak ---"
+reset_markers; with_quotes
+printf '2' > "${HOME}/.claude/state/archive-refused/sent-${SID}-local_child_7"
+lk=$(run_err "$E" "$(archive_payload "$SID" local_child_7 "$LIVE_WORK")")
+check 131 E 'live_work + 送信 2 通: 上流 issue 93270 を示す' yes "$(has "$lk" '93270')"
+check 132 E 'live_work + 送信 2 通: [決定] 本文を出さない (3 通目を送らせない)' no \
+  "$(has "$lk" '[決定] ユーザー指示で self-archive')"
+check 133 E 'live_work + 送信 2 通: サイドバーからの archive へ誘導 (唯一の復帰手段)' yes \
+  "$(has "$lk" 'サイドバーから archive してください')"
+check 134 E 'live_work + 送信 2 通: pending を立てない' no "$(exists "$PENDING_H")"
+
+echo "--- H-4. 未知の文言は**従来どおり** (1 回目 = 再試行 1 回 → 2 回目 = [決定]) — #167 の回帰 ---"
+reset_markers; with_quotes
+uk1=$(run_err "$E" "$(archive_payload "$SID" local_child_8 "$UNKNOWN_HOLD")")
+check 135 E '未知の文言 1 回目: 「再試行は 1 回まで」' yes "$(has "$uk1" '再試行は 1 回まで')"
+check 136 E '未知の文言 1 回目: unpin を持ち出さない (知らない文言に remedy を当てない)' no \
+  "$(has "$uk1" 'set_pinned')"
+uk2=$(run_err "$E" "$(archive_payload "$SID" local_child_8 "$UNKNOWN_HOLD")")
+check 137 E '未知の文言 2 回目: [決定] 完成形が出る' yes \
+  "$(has "$uk2" '[決定] ユーザー指示で self-archive — local_child_8 へ')"
+check 138 E '未知の文言 2 回目: pending が立つ' yes "$(exists "$PENDING_H")"
 
 echo
 echo "--- 実物の ~/.claude/state を汚していないことの確認 (HOME=$HOME) ---"
