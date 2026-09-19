@@ -408,7 +408,7 @@ check 103 F '(e) 別 session_id (別セッション。サブエージェント�
   "$(decision "$(run "$F" "$(bash_payload local_other_2 'ls')")")"
 
 echo
-echo "=== G. require-spawn-task-title.sh (PreToolUse spawn_task。title を命名規約 3 形で検査 — Refs ippoan/alc-app-s3#135) ==="
+echo "=== G. require-spawn-task-title.sh (PreToolUse spawn_task。title を命名規約 4 形で検査 — Refs ippoan/alc-app-s3#135, ippoan/claude-skills#186) ==="
 reset_markers
 check 104 G 'marker 無し + 規約違反 title → 素通し' allow \
   "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p135-c-kiosk-measurements 題')")")"
@@ -452,6 +452,27 @@ check 117 G 'child marker だけ (parent marker 無し) + 違反 title → 素�
 reset_markers; mk_parent "$SID"
 check 118 G 'payload が壊れている (不正 JSON) → 素通し' allow \
   "$(decision "$(printf '{not json' | bash "$G" 2>/dev/null)")"
+
+echo
+echo "--- G-2. 形4 (別案件の新しい親: [S]/[O] #p<issue> <題>) — 番号照合を飛ばす (Refs ippoan/claude-skills#186) ---"
+reset_markers; mk_parent_titled "$SID" '#p310 遠隔点呼の点呼種別の監督'
+check 139 G '形4: [S] #p353 題 → marker が #p310 でも通る (番号照合を飛ばす)' allow \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p353 題')")")"
+check 140 G '形4: [O] #p353 題 → 通る' allow \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[O] #p353 題')")")"
+check 141 G '形3 (接頭辞なし): #p353 題 → marker が #p310 なら番号照合で deny (後継の親は従来どおり)' deny \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '#p353 題')")")"
+check 142 G '不正: [S] #p353題 (スペース無し) → deny' deny \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p353題')")")"
+check 143 G '不正: [S] #p353  (題が空) → deny' deny \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p353 ')")")"
+
+echo
+echo "--- G-3. [S] #p353 題 を set_session_title に渡しても marker が立たない (改名前は素通り。意図の固定) ---"
+reset_markers
+run "$A" "$(title_payload "$SID" self '[S] #p353 題')" >/dev/null
+check 144 A '[S] #p353 題 は session-role-log.sh のどの分岐にも当たらず parent marker を立てない' none \
+  "$(state_of "$SID")"
 
 echo
 echo "--- G-1. session-role-log.sh (A) が書く marker の中身がタイトル 1 行になっている ---"
