@@ -39,9 +39,11 @@ Release asset `code-index.db.gz`(索引)と `dup-pairs.json`(重複台帳)が成
   workflow (shard 並列 + chunk・vector cache。**全量やり直しは必ずこれ**)。
 - cache が温かい full-rebuild は 10 分級。モデル・`embed_text`・チャンク形状を
   変えたら cache key の `caches-v1` prefix を bump して full rebuild。
-- MCP server は各マシンの clone (`~/code-search-index` + venv) を
+- MCP server は **そのマシンに既にある clone** を
   `claude mcp add -s user code-search -- <venv>/python <repo>/mcp/server.py`
-  で常設。DB は Release から自動同期 (`CODE_INDEX_REFRESH_SECONDS`、既定 6h)。
+  で常設 (venv は repo の外、例 `~/.venvs/code-search`。`mcp/requirements.txt` に加え、
+  push 時の重複警告 hook も使うなら `requirements.txt` も入れる)。
+  DB は Release から自動同期 (`CODE_INDEX_REFRESH_SECONDS`、既定 6h)。
 - repo の詳細ルールは code-search-index の `CLAUDE.md` が正。
 
 ## 踏み抜き済みの罠
@@ -56,3 +58,9 @@ Release asset `code-index.db.gz`(索引)と `dup-pairs.json`(重複台帳)が成
   hooksPath を尊重して**自分自身を呼び fork 爆弾**になる。`--git-dir` で引く。
 - 埋め込み入力は 2000 字 cap (attention は系列長の 2 乗)。索引とクエリは
   必ず同一モデル (`indexer/db.py` の `MODEL_NAME` が正)。
+- **MCP server 用に 2 つ目の clone を作らない。** 誰も pull しないので黙ってズレる
+  (実測 2026-09-20: main より 2 PR 遅れたまま動いていた。索引は答えに鮮度を添えるが、
+  コード側は何 revision で答えているか言わないので気づけなかった)。既にある clone を指す。
+  答えの末尾の `code @ <sha>` が、実際に走っているコードの revision。
+- **`git pull` は走行中の server に届かない。** プロセスは起動時に 1 回コードを読むだけ
+  (MCP server はセッションごとに spawn される)。pull の後はセッションを開き直す。
