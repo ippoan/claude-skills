@@ -390,6 +390,9 @@ tool 説明を読んで迷ったら、この節と `dtako-reimport.ts` の実コ
 - **`theearth_kicked`** — 誰かのセッションを蹴ったか。theearth は同一アカウントの同時ログインを
   許さないので、ログインは常に誰かを蹴りうる。**`true` が続くなら人が使っている可能性を疑う**
 
+**`run_dtako_alc_upload_driver` の応答には `theearth_logins` も `theearth_kicked` も
+無い** (実測)。この節は上の 3 tool 限定。
+
 **★ ②と③は書く先が違う (2026-08-04 追加)。ここを混同すると診断を外す。**
 
 | | 書く先 | 効果 |
@@ -658,6 +661,11 @@ dtako 入力欠け: R2 に CSV の無い運行 4 件
 **直し方**: 名指しされた 22 桁を `run_dtako_alc_upload` (運行 1 件) で上げ直す。
 読取日スクレイプでも直るが全乗務員を巻き込む。
 
+**★ `run_kintai_recalc` の dry-run が返す `fold.shifts` / `day_summaries` / `day_parts` は
+「この回に新しく書く数」で、その月に在る総数ではない。** 0 を「畳むものが無い」と
+読むと必要な工程を落とす。**総数を知りたいなら `get_kintai_day_summaries` を読む**
+(読むだけの口)。
+
 ### ★ 切り分けの順序 (2026-08-04 に 5 件で確立)
 
 **②を先に打って、動いたかを測る。これが最初の分岐。**
@@ -800,6 +808,11 @@ body: {ope_no, start_ope, comp_id?}     header: X-Alc-Proxy-Secret
 KUDGURI.csv の**行数ぶんだけ** `insert_operation` する。日次 zip 前提ではない。
 `run_dtako_scrape` が読取日ぶん全部を巻き込むのは **theearth 側の取得単位が日次だから**
 であって、alc の受け口の制約ではない。
+
+**運行数 (22 桁) と突き合わせたいなら `run_kintai_recalc` の
+`unko_diff_gcp_only_in_month_by_driver[].gcp_only` を見る (= その月の 22 桁運行数)。
+`operations_count` と期待値を直接比べると、2マンのぶんだけ上振れして
+「絞込が効いていない」と誤診する。**
 
 ### ★ 幽霊行 (2マン登録を削った残骸)
 
