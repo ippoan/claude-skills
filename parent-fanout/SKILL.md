@@ -251,6 +251,17 @@ child-auditor を並列起動 (終わった子のぶんだけ)
   急ぐなら新しいセッションで使う
 - **MCP connector は Agent tool のサブエージェントには届くが、spawn_task の子には
   引き継がれない。** これも「調査を子セッションにしない」理由の 1 つ
+- **★ ただし「届く」のは `tools:` が `*` の agent だけ。明示列挙した名前のうち、その環境で
+  解決できないものは黙って落ちる (実測 2026-09-24)。** `task-surveyor`
+  (`tools: Read, Grep, Glob, Bash, ToolSearch`) と `child-auditor`
+  (`tools: Read, Grep, Glob, Bash`) に自分の tool 一覧を報告させたら**どちらも `Read, Bash`
+  だけ** — `Grep` / `Glob` はその環境に無く、**`ToolSearch` も名指しでは付与されなかった**。
+  同じ回に `general-purpose` (`tools: *`) は ToolSearch も MCP も見えて意味検索に成功した
+  (陽性対照)。**`ToolSearch` が落ちると deferred な MCP tool を 1 つも load できない**ので、
+  意味検索を要求する agent は **`tools:` に `mcp__<server>__<tool>` を名指しで足す**
+  (`session-archiver` が `mcp__ccd_session_mgmt__*` を名指しして動いているのが先例)。
+  **落ちたことは agent にも親にも通知されない** — agent は「意味検索が使えなかった」と
+  正しく報告するが、親はそれを環境ではなく偶発と読んでしまう
 - **connector の `status: pending` は「接続中」であって失敗ではない (実測 2026-09-12)。**
   開始直後は claude.ai connector が全部 `pending` で `ToolSearch` にも出ないことがあるが、
   **数分待ってターンをまたいで打ち直すと deferred tool 一覧へまとめて降りてくる**
