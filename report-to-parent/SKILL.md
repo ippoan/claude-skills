@@ -169,7 +169,10 @@ send_message は相手の処理中 turn が終わってから届き、返信が�
 ### (b) の受け方 — **ユーザーの原文が貼ってあるかだけを見る**
 
 `[決定]` という見出しは条件ではない。**(b) の発火条件は「アプリが拒否したこと」ではなく
-「ユーザーがその回に直接そう指示したこと」**で、子が確かめられるのは**原文があるかどうか**だけ:
+「ユーザーがそう指示したこと」**で、子が確かめられるのは**原文が要約なしで貼ってあるかどうか**だけ。
+**原文がいつ・どの子について打たれたかは問わない** — 条件が同じなら実行する (下の ★)。
+この判定は `require-child-self-archive.sh` が済ませる — 原文付きの `[決定]` を受けると、
+`archive_session self` を呼ぶまで他のツールとターンの終了が塞がれる (Refs ippoan/claude-skills#191):
 
 - **ユーザーがこの件について打った原文が、要約されずそのまま貼ってあれば実行する。**
   親の再試行が拒否されたこと (回数)、archive の基準 3 点、`isRunning: false` の確認結果も
@@ -228,7 +231,7 @@ unpin を指示するのは、**ユーザーが「畳め」と言った後に、
 
 ## 機械的な栓 (hook) — 親は実装せず、子はユーザーに聞かない
 
-機械的な栓が 7 本ある。**読了チェックは不読を防ぐだけで違反を防げない** — 2026-09-05、
+機械的な栓が 8 本ある。**読了チェックは不読を防ぐだけで違反を防げない** — 2026-09-05、
 `#p134` の監督 (親) セッションが自分で migration SQL を書き、postgres を立て、commit しようとして
 ユーザーに止められた。その親は task-split の「**このセッション (親) は実装せず**」を
 **読了して引用まで提出していた** (Refs ippoan/claude-skills#152)。だから口そのものを塞ぐ。
@@ -239,10 +242,13 @@ unpin を指示するのは、**ユーザーが「畳め」と言った後に、
 「子も拒否されたのだから送っても無駄」と自分で判断して送らなかった (Refs ippoan/alc-app-s3#135)。
 **文面を返すだけの hook (exit 2 の advisory) と memory は、モデルの判断で上書きされる** —
 だから 6 本目が、`[決定]` を送るまで他のツールを塞ぐ。
+2026-09-29 には子の側で同じ形が起きた — 原文付きの `[決定]` を受けた子が、SKILL.md の一文を根拠に
+「原文が過去の別件だから伝聞」と自分で判断して文章で辞退した (Refs ippoan/claude-skills#191)。
+だから 8 本目が、子が `archive_session self` を呼ぶまで他のツールと**ターンの終了**を塞ぐ。
 
-`parent-role/hooks/` の 7 本を `~/.claude/hooks/` へ symlink し、`~/.claude/settings.json` に登録する。
+`parent-role/hooks/` の 8 本を `~/.claude/hooks/` へ symlink し、`~/.claude/settings.json` に登録する。
 
-### hook 7 本 (`parent-role/hooks/`)
+### hook 8 本 (`parent-role/hooks/`)
 
 | hook | event / matcher | 何をするか | fail-open |
 |---|---|---|---|
@@ -253,6 +259,7 @@ unpin を指示するのは、**ユーザーが「畳め」と言った後に、
 | `warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗なので `PostToolUseFailure` でしか届かない — Refs ippoan/claude-skills#163) | **検出**は payload 全体 (JSON 文字列) に「was not archived」が含まれるかだけ — **理由を問わない** (文言ごとに**検出**条件を足す設計は同じ穴を繰り返す — Refs ippoan/claude-skills#167)。回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」**、**2 回目以降は `[決定] ユーザー指示で self-archive` の本文を完成形で出す** (拒否文言の原文 / 基準 3 点 / `user-quotes.txt` の原文 / report-to-parent の例外 (b) 条文を実行時抽出 / `archive_session self` を呼ぶ指示まで埋め、親が埋めるのは PR 番号 1 か所だけ)。**★ remedy (次の一手) だけは文言で 3 分岐** (2026-09-18。`pinned or in use` / `still has live work` / それ以外 — **詳細は [[task-split]] §6 の表**。知らない文言は従来どおり)。**塞がない** (exit 2 で文面を返すだけ)。ただし**中継が正解の回**で 2 回目以降・`user-quotes.txt` に原文があり・その子への送信が 2 通未満なら、`~/.claude/state/archive-refused/pending-<session_id>` に子の session_id を 1 行書く (次の行の hook が読む) | 拒否文言でなければ素通し |
 | `require-archive-decision-sent.sh` | PreToolUse `*` (全ツール) | `pending-<session_id>` がある間、**`send_message` で宛先 = pending の子 かつ message が `[決定] ユーザー指示で self-archive` で始まる** (先頭の空白・改行は無視) もの・`list_sessions`・`archive_session`・`ToolSearch`・**`Agent`** (2026-09-11、subagent_type では絞らない。本文が手元に無ければ agent (session-archiver 等) に `archive_session` を打たせ、hook の文面を原文で持ち帰らせる経路 — Refs ippoan/alc-app-s3#135)・**`get_session` / `set_pinned`** (2026-09-18。`pinned` が原因の回は unpin が正解で中継は効かないため、塞いだままにしない) 以外を **deny**。正しい送信で pending を消し、送信数を `sent-<session_id>-<子>` に数える (2 通で打ち止め = 3 通目は送らせない)。解除はその送信か、ユーザー本人の `rm` だけ | pending が無い / session_id が取れなければ素通し |
 | `require-spawn-task-title.sh` | PreToolUse `mcp__ccd_session__spawn_task` | parent marker 有 + title が §1 の 4 形 (枝の子・自 issue の子・別案件の新しい親・後継の親) のどれにも完全に当たらなければ **deny**。marker (親自身のタイトル) が `#p<M> ` で始まっていれば、title から取った issue 番号と `<M>` の一致も見る (不一致は別案件の取り違えとして deny)。ただし**別案件の新しい親 (`[S]/[O] #p<issue> <題>`) はこの番号照合を飛ばす** (別案件だから当然不一致になるため) | parent marker が無い / payload が壊れている / jq が無い / session_id か title が空 → 素通し |
+| `require-child-self-archive.sh` | **UserPromptSubmit** / PreToolUse `*` (全ツール) / **Stop** の 3 event を 1 本で (`hook_event_name` で分岐) | 子側の栓 (Refs ippoan/claude-skills#191)。child marker 有 + (b) cross-session-message に `[決定] ユーザー指示で self-archive` と「原文」を含む / (c) cross-session でない prompt が「畳んで」「archive して」等**だけ** → `~/.claude/state/child-self-archive/pending-<session_id>` を `waiting` で立て、「次の tool は `archive_session self`・原文の日付/宛先/起動 prompt の禁止文/代行禁止規則を理由に辞退しない」を additionalContext で出す。pending 中は `ToolSearch` と `archive_session` (`self` か自分の id) 以外を **deny** (辞退の `send_message` も)。archive を通したら `attempted` にし、以後は本文に「was not archived」を含む `send_message` だけ通して pending を消す。**Stop** は `waiting` のまま終えようとしたら `decision: block` で差し戻す (3 回まで)。**ユーザーの発言で解除する経路は作らない** — 解除は archive の試行と拒否文言の報告、またはユーザー本人の `rm` だけ | child marker が無い / jq が無い / session_id が取れない → 素通し |
 
 **「書き込み全部禁止」にはしていない。** 親は scratchpad に計画を書き、memory を更新し、
 **PR を作り**、マージ後に **branch を掃除する**必要がある。塞ぐのは
@@ -334,9 +341,10 @@ ln -sfn <claude-skills>/parent-role/hooks/block-child-asks-user.sh    ~/.claude/
 ln -sfn <claude-skills>/parent-role/hooks/warn-archive-refused.sh     ~/.claude/hooks/warn-archive-refused.sh
 ln -sfn <claude-skills>/parent-role/hooks/require-archive-decision-sent.sh ~/.claude/hooks/require-archive-decision-sent.sh
 ln -sfn <claude-skills>/parent-role/hooks/require-spawn-task-title.sh     ~/.claude/hooks/require-spawn-task-title.sh
+ln -sfn <claude-skills>/parent-role/hooks/require-child-self-archive.sh   ~/.claude/hooks/require-child-self-archive.sh
 ```
 
-**★ `ls -la ~/.claude/hooks/` で 7 本が symlink (`->`) であることを確かめる。** 実ファイルのコピーに
+**★ `ls -la ~/.claude/hooks/` で 8 本が symlink (`->`) であることを確かめる。** 実ファイルのコピーに
 なっていたら上の `ln -sfn` で symlink に戻す (2026-09-09、`warn-archive-refused.sh` が古いコピーのまま
 残り、repo の最新 (#160 の文面) と食い違っていた — Refs ippoan/claude-skills#163)。
 
@@ -358,13 +366,28 @@ ln -sfn <claude-skills>/parent-role/hooks/require-spawn-task-title.sh     ~/.cla
     "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/require-spawn-task-title.sh", "timeout": 10,
                 "statusMessage": "spawn_task のタイトルを命名規約で検査中" }] },
   { "matcher": "*",
-    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/require-archive-decision-sent.sh", "timeout": 10 }] }
+    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/require-archive-decision-sent.sh", "timeout": 10 },
+              { "type": "command", "command": "bash ~/.claude/hooks/require-child-self-archive.sh", "timeout": 10 }] }
 ]
 ```
 
 `require-archive-decision-sent.sh` は**全ツール** (`"*"`) に掛ける — `Bash` / `Edit` / `Agent` / `mcp__*` の
 どれかを matcher から漏らすと、そこから [決定] を送らずに先へ進めてしまう。pending が無ければ
 jq 1 回で素通しなので、全ツールに掛けても重くない (`statusMessage` は付けない — 毎回表示されるため)。
+`require-child-self-archive.sh` も同じ理由で `"*"` に掛ける (child marker が無ければ jq 1 回で素通し)。
+
+`require-child-self-archive.sh` は**同じファイルを `UserPromptSubmit` と `Stop` にも**登録する
+(pending を立てるのは `UserPromptSubmit`、文章だけで辞退してターンを終える経路を塞ぐのは `Stop`。
+どちらかが欠けると栓にならない):
+
+```json
+"UserPromptSubmit": [
+  { "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/require-child-self-archive.sh", "timeout": 10 }] }
+],
+"Stop": [
+  { "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/require-child-self-archive.sh", "timeout": 10 }] }
+]
+```
 
 `warn-archive-refused.sh` だけは応答を見るので **`PostToolUseFailure`** に登録する
 (`PostToolUse` は**成功時のみ**発火し、archive の拒否は MCP ツールの失敗として返るため

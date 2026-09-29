@@ -28,7 +28,8 @@ SID="local_self_1"
 
 reset_markers() {
   rm -rf "${HOME}/.claude/state/parent-role" "${HOME}/.claude/state/child-role" \
-         "${HOME}/.claude/state/child-may-ask" "${HOME}/.claude/state/archive-refused" 2>/dev/null
+         "${HOME}/.claude/state/child-may-ask" "${HOME}/.claude/state/archive-refused" \
+         "${HOME}/.claude/state/child-self-archive" 2>/dev/null
 }
 mk_parent()  { mkdir -p "${HOME}/.claude/state/parent-role";  : > "${HOME}/.claude/state/parent-role/$1"; }
 mk_child()   { mkdir -p "${HOME}/.claude/state/child-role";   : > "${HOME}/.claude/state/child-role/$1"; }
@@ -533,6 +534,113 @@ uk2=$(run_err "$E" "$(archive_payload "$SID" local_child_8 "$UNKNOWN_HOLD")")
 check 137 E '未知の文言 2 回目: [決定] 完成形が出る' yes \
   "$(has "$uk2" '[決定] ユーザー指示で self-archive — local_child_8 へ')"
 check 138 E '未知の文言 2 回目: pending が立つ' yes "$(exists "$PENDING_H")"
+
+echo
+echo "=== I. require-child-self-archive.sh (UserPromptSubmit / PreToolUse 全ツール / Stop。子が畳む指示を受けたら archive self まで口を塞ぐ — Refs ippoan/claude-skills#191) ==="
+I="${HERE}/require-child-self-archive.sh"
+CSA="${HOME}/.claude/state/child-self-archive"
+PENDING_I="${CSA}/pending-${SID}"
+prompt_payload() { jq -nc --arg s "$1" --arg p "$2" '{session_id:$s,hook_event_name:"UserPromptSubmit",prompt:$p}'; }
+stop_payload()   { jq -nc --arg s "$1" '{session_id:$s,hook_event_name:"Stop",stop_hook_active:false}'; }
+pre() { printf '%s' "$1" | jq -c '. + {hook_event_name:"PreToolUse"}'; }
+self_archive_payload() { jq -nc --arg s "$1" --arg t "$2" \
+  '{session_id:$s,hook_event_name:"PreToolUse",tool_name:"mcp__ccd_session_mgmt__archive_session",tool_input:{session_id:$t}}'; }
+phase_i() { if [ -f "$PENDING_I" ]; then head -n 1 "$PENDING_I"; else echo none; fi; }
+is_block() { if printf '%s' "$1" | grep -q '"decision":"block"'; then echo block; else echo pass; fi; }
+XMSG_B='<cross-session-message from="#p680 Workers 移行 (vein 先行) の監督">
+[決定] ユーザー指示で self-archive — local_self_1 へ
+親の archive_session がアプリに 2 回拒否されました。
+ユーザーの原文 (2026-09-10、別の子について): さっさとたため
+</cross-session-message>'
+XMSG_NOQUOTE='<cross-session-message from="#p680 …">
+[決定] ユーザー指示で self-archive
+</cross-session-message>'
+XMSG_OTHER='<cross-session-message from="#p680 …">
+[質問] ついでにこれも見て
+</cross-session-message>'
+
+echo "--- I-a. pending を立てる ---"
+reset_markers; mk_child "$SID"
+ctx=$(run "$I" "$(prompt_payload "$SID" "$XMSG_B")")
+check 140 I '(b) 原文付き [決定] の cross-session-message → pending waiting' waiting "$(phase_i)"
+check 141 I '(b) additionalContext に「次の tool 呼び出しは archive_session self」' yes \
+  "$(has "$ctx" 'archive_session { session_id: \"self\" }')"
+check 142 I '(b) additionalContext に「辞退しない」理由の列挙 (代行禁止規則)' yes "$(has "$ctx" '代行禁止規則')"
+reset_markers; mk_child "$SID"
+run "$I" "$(prompt_payload "$SID" '畳んで。')" >/dev/null
+check 143 I '(c) ユーザー本人が「畳んで。」だけ → pending waiting' waiting "$(phase_i)"
+reset_markers; mk_child "$SID"
+run "$I" "$(prompt_payload "$SID" ' archive して ')" >/dev/null
+check 144 I '(c) 「archive して」(空白入り) → pending waiting' waiting "$(phase_i)"
+
+echo "--- I-b. pending 中は archive self 以外を塞ぐ ---"
+reset_markers; mk_child "$SID"
+run "$I" "$(prompt_payload "$SID" "$XMSG_B")" >/dev/null
+check 145 I 'pending 中の Bash → deny' deny "$(decision "$(run "$I" "$(pre "$(bash_payload "$SID" 'git status')")")")"
+check 146 I 'pending 中の Write → deny' deny \
+  "$(decision "$(run "$I" "$(pre "$(file_payload "$SID" "${SANDBOX}/outside/x.md")")")")"
+check 147 I 'pending 中の辞退 send_message → deny' deny \
+  "$(decision "$(run "$I" "$(pre "$(send_payload "$SID" local_parent '原文が過去の別件なので辞退します')")")")"
+check 148 I 'waiting 中は「was not archived」入りの send_message も deny (試行前)' deny \
+  "$(decision "$(run "$I" "$(pre "$(send_payload "$SID" local_parent 'was not archived: pinned')")")")"
+check 149 I 'pending 中の ToolSearch → 通す' allow \
+  "$(decision "$(run "$I" "$(pre "$(tool_payload "$SID" ToolSearch)")")")"
+check 150 I 'pending 中の archive_session (他人) → deny' deny \
+  "$(decision "$(run "$I" "$(self_archive_payload "$SID" local_other_9)")")"
+check 151 I 'deny の文面に rm での解除 (ユーザー本人のみ) が載る' yes \
+  "$(has "$(run "$I" "$(pre "$(bash_payload "$SID" 'ls')")")" "rm ${PENDING_I}")"
+
+echo "--- I-c. Stop は waiting 中 3 回まで差し戻す ---"
+check 152 I 'Stop 1 回目 → block' block "$(is_block "$(run "$I" "$(stop_payload "$SID")")")"
+check 153 I 'Stop 2 回目 → block' block "$(is_block "$(run "$I" "$(stop_payload "$SID")")")"
+check 154 I 'Stop 3 回目 → block' block "$(is_block "$(run "$I" "$(stop_payload "$SID")")")"
+check 155 I 'Stop 4 回目 → 通す (無限ループ防止)' pass "$(is_block "$(run "$I" "$(stop_payload "$SID")")")"
+
+echo "--- I-d. ユーザーの普通の発言では解除しない (issue #191 の 4) ---"
+run "$I" "$(prompt_payload "$SID" 'なんで止まってるの？')" >/dev/null
+check 156 I 'cross-session でない普通の prompt → pending は残る' waiting "$(phase_i)"
+
+echo "--- I-e. archive self を通したら attempted、拒否文言の報告で消える ---"
+check 157 I 'archive_session { session_id: "self" } → 通す' allow \
+  "$(decision "$(run "$I" "$(self_archive_payload "$SID" self)")")"
+check 158 I '通したあと pending は attempted' attempted "$(phase_i)"
+check 159 I 'attempted 中の Stop → 通す (差し戻すのは waiting だけ)' pass "$(is_block "$(run "$I" "$(stop_payload "$SID")")")"
+check 160 I 'attempted 中の辞退 send_message → deny' deny \
+  "$(decision "$(run "$I" "$(pre "$(send_payload "$SID" local_parent '畳みません')")")")"
+check 161 I 'attempted 中の拒否文言入り send_message → 通す' allow \
+  "$(decision "$(run "$I" "$(pre "$(send_payload "$SID" local_parent 'archive_session self: was not archived: it still has live work')")")")"
+check 162 I '拒否文言を報告したら pending は消える' none "$(phase_i)"
+check 163 I '消えた後の Bash は素通し' allow "$(decision "$(run "$I" "$(pre "$(bash_payload "$SID" 'ls')")")")"
+reset_markers; mk_child "$SID"
+run "$I" "$(prompt_payload "$SID" "$XMSG_B")" >/dev/null
+check 164 I 'archive_session で自分の session_id を直接指定 → 通す' allow \
+  "$(decision "$(run "$I" "$(self_archive_payload "$SID" "$SID")")")"
+
+echo "--- I-f. 陰性 (pending を立てない / 素通し) ---"
+reset_markers
+run "$I" "$(prompt_payload "$SID" "$XMSG_B")" >/dev/null
+check 165 I 'child marker 無し + 原文付き [決定] → pending を立てない' none "$(phase_i)"
+mk_parent "$SID"; mkdir -p "$CSA"; printf 'waiting\nb\n' > "$PENDING_I"
+check 166 I 'child marker 無し (親) + pending ファイル有 → Bash 素通し' allow \
+  "$(decision "$(run "$I" "$(pre "$(bash_payload "$SID" 'ls')")")")"
+check 167 I 'child marker 無し + Stop → 通す' pass "$(is_block "$(run "$I" "$(stop_payload "$SID")")")"
+reset_markers; mk_child "$SID"
+run "$I" "$(prompt_payload "$SID" 'この PR の CI を見て、畳んでいい状態か教えて')" >/dev/null
+check 168 I 'cross-session でない普通の prompt (「畳んで」を含む文) → 立てない' none "$(phase_i)"
+run "$I" "$(prompt_payload "$SID" "$XMSG_NOQUOTE")" >/dev/null
+check 169 I '(b) 原文の無い見出しだけの [決定] → 立てない' none "$(phase_i)"
+run "$I" "$(prompt_payload "$SID" "$XMSG_OTHER")" >/dev/null
+check 170 I '[決定] でない cross-session-message → 立てない' none "$(phase_i)"
+run "$I" "$(prompt_payload "$SID" '<cross-session-message from="#p680 …">畳んで</cross-session-message>')" >/dev/null
+check 171 I '親から「畳んで」だけ (= (c) ではない) → 立てない' none "$(phase_i)"
+check 172 I 'pending 無し + Bash → 素通し' allow "$(decision "$(run "$I" "$(pre "$(bash_payload "$SID" 'ls')")")")"
+check 173 I 'session_id の無い payload → 素通し' allow \
+  "$(decision "$(run "$I" '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls"}}')")"
+mkdir -p "$CSA"; printf 'waiting\nb\n' > "$PENDING_I"
+NOJQ_PATH="${SANDBOX}/nojq-bin"; mkdir -p "$NOJQ_PATH"
+nojq=$(printf '%s' "$(pre "$(bash_payload "$SID" 'ls')")" | PATH="$NOJQ_PATH" "$(command -v bash)" "$I" 2>/dev/null; echo "rc=$?")
+check 174 I 'jq が無い (PATH から外す) → 素通し (出力なし・exit 0)' 'rc=0' "$nojq"
+reset_markers
 
 echo
 echo "--- 実物の ~/.claude/state を汚していないことの確認 (HOME=$HOME) ---"
