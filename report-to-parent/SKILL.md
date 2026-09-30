@@ -231,7 +231,7 @@ unpin を指示するのは、**ユーザーが「畳め」と言った後に、
 
 ## 機械的な栓 (hook) — 親は実装せず、子はユーザーに聞かない
 
-機械的な栓が 8 本ある。**読了チェックは不読を防ぐだけで違反を防げない** — 2026-09-05、
+機械的な栓が 9 本ある。**読了チェックは不読を防ぐだけで違反を防げない** — 2026-09-05、
 `#p134` の監督 (親) セッションが自分で migration SQL を書き、postgres を立て、commit しようとして
 ユーザーに止められた。その親は task-split の「**このセッション (親) は実装せず**」を
 **読了して引用まで提出していた** (Refs ippoan/claude-skills#152)。だから口そのものを塞ぐ。
@@ -246,9 +246,9 @@ unpin を指示するのは、**ユーザーが「畳め」と言った後に、
 「原文が過去の別件だから伝聞」と自分で判断して文章で辞退した (Refs ippoan/claude-skills#191)。
 だから 8 本目が、子が `archive_session self` を呼ぶまで他のツールと**ターンの終了**を塞ぐ。
 
-`parent-role/hooks/` の 8 本を `~/.claude/hooks/` へ symlink し、`~/.claude/settings.json` に登録する。
+`parent-role/hooks/` の 9 本を `~/.claude/hooks/` へ symlink し、`~/.claude/settings.json` に登録する。
 
-### hook 8 本 (`parent-role/hooks/`)
+### hook 9 本 (`parent-role/hooks/`)
 
 | hook | event / matcher | 何をするか | fail-open |
 |---|---|---|---|
@@ -260,6 +260,7 @@ unpin を指示するのは、**ユーザーが「畳め」と言った後に、
 | `require-archive-decision-sent.sh` | PreToolUse `*` (全ツール) | `pending-<session_id>` がある間、**`send_message` で宛先 = pending の子 かつ message が `[決定] ユーザー指示で self-archive` で始まる** (先頭の空白・改行は無視) もの・`list_sessions`・`archive_session`・`ToolSearch`・**`Agent`** (2026-09-11、subagent_type では絞らない。本文が手元に無ければ agent (session-archiver 等) に `archive_session` を打たせ、hook の文面を原文で持ち帰らせる経路 — Refs ippoan/alc-app-s3#135)・**`get_session` / `set_pinned`** (2026-09-18。`pinned` が原因の回は unpin が正解で中継は効かないため、塞いだままにしない) 以外を **deny**。正しい送信で pending を消し、送信数を `sent-<session_id>-<子>` に数える (2 通で打ち止め = 3 通目は送らせない)。解除はその送信か、ユーザー本人の `rm` だけ | pending が無い / session_id が取れなければ素通し |
 | `require-spawn-task-title.sh` | PreToolUse `mcp__ccd_session__spawn_task` | parent marker 有 + title が §1 の 4 形 (枝の子・自 issue の子・別案件の新しい親・後継の親) のどれにも完全に当たらなければ **deny**。marker (親自身のタイトル) が `#p<M> ` で始まっていれば、title から取った issue 番号と `<M>` の一致も見る (不一致は別案件の取り違えとして deny)。ただし**別案件の新しい親 (`[S]/[O] #p<issue> <題>`) はこの番号照合を飛ばす** (別案件だから当然不一致になるため) | parent marker が無い / payload が壊れている / jq が無い / session_id か title が空 → 素通し |
 | `require-child-self-archive.sh` | **UserPromptSubmit** / PreToolUse `*` (全ツール) / **Stop** の 3 event を 1 本で (`hook_event_name` で分岐) | 子側の栓 (Refs ippoan/claude-skills#191)。child marker 有 + (b) cross-session-message に `[決定] ユーザー指示で self-archive` と「原文」を含む / (c) cross-session でない prompt が「畳んで」「archive して」等**だけ** → `~/.claude/state/child-self-archive/pending-<session_id>` を `waiting` で立て、「次の tool は `archive_session self`・原文の日付/宛先/起動 prompt の禁止文/代行禁止規則を理由に辞退しない」を additionalContext で出す。pending 中は `ToolSearch` と `archive_session` (`self` か自分の id) 以外を **deny** (辞退の `send_message` も)。archive を通したら `attempted` にし、以後は本文に「was not archived」を含む `send_message` だけ通して pending を消す。**Stop** は `waiting` のまま終えようとしたら `decision: block` で差し戻す (3 回まで)。**ユーザーの発言で解除する経路は作らない** — 解除は archive の試行と拒否文言の報告、またはユーザー本人の `rm` だけ | child marker が無い / jq が無い / session_id が取れない → 素通し |
+| `block-child-renamed-push.sh` | PreToolUse `Bash` | child marker 有 + `git push` の refspec が `<src>:<dst>` で src と dst の branch 名が違う (`refs/heads/` は剥がして比べる。`HEAD:<dst>` は現在の branch と比べる) → **deny** (予定の branch 名が他の worktree に握られているなら、別名で push せず親へ `[質問]`。片付け役 worktree-janitor が同一 branch と判定できなくなるため — Refs ohishi-exp/rust-ichibanboshi#322)。`git push` / `-u origin <name>` / `<name>:<name>` / `--delete` / tag の push は通す | child marker が無い / jq が無い / payload が壊れている / session_id が取れない → 素通し |
 
 **「書き込み全部禁止」にはしていない。** 親は scratchpad に計画を書き、memory を更新し、
 **PR を作り**、マージ後に **branch を掃除する**必要がある。塞ぐのは
@@ -342,9 +343,10 @@ ln -sfn <claude-skills>/parent-role/hooks/warn-archive-refused.sh     ~/.claude/
 ln -sfn <claude-skills>/parent-role/hooks/require-archive-decision-sent.sh ~/.claude/hooks/require-archive-decision-sent.sh
 ln -sfn <claude-skills>/parent-role/hooks/require-spawn-task-title.sh     ~/.claude/hooks/require-spawn-task-title.sh
 ln -sfn <claude-skills>/parent-role/hooks/require-child-self-archive.sh   ~/.claude/hooks/require-child-self-archive.sh
+ln -sfn <claude-skills>/parent-role/hooks/block-child-renamed-push.sh ~/.claude/hooks/block-child-renamed-push.sh
 ```
 
-**★ `ls -la ~/.claude/hooks/` で 8 本が symlink (`->`) であることを確かめる。** 実ファイルのコピーに
+**★ `ls -la ~/.claude/hooks/` で 9 本が symlink (`->`) であることを確かめる。** 実ファイルのコピーに
 なっていたら上の `ln -sfn` で symlink に戻す (2026-09-09、`warn-archive-refused.sh` が古いコピーのまま
 残り、repo の最新 (#160 の文面) と食い違っていた — Refs ippoan/claude-skills#163)。
 
@@ -360,6 +362,9 @@ ln -sfn <claude-skills>/parent-role/hooks/require-child-self-archive.sh   ~/.cla
   { "matcher": "Bash",
     "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-parent-commits.sh", "timeout": 10,
                 "statusMessage": "親セッションの commit/push か確認中" }] },
+  { "matcher": "Bash",
+    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-child-renamed-push.sh", "timeout": 10,
+                "statusMessage": "子セッションの別名 push か確認中" }] },
   { "matcher": "AskUserQuestion",
     "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-child-asks-user.sh", "timeout": 10 }] },
   { "matcher": "mcp__ccd_session__spawn_task",

@@ -12,6 +12,7 @@ C="${HERE}/block-parent-commits.sh"
 D="${HERE}/block-child-asks-user.sh"
 E="${HERE}/warn-archive-refused.sh"
 G="${HERE}/require-spawn-task-title.sh"
+J="${HERE}/block-child-renamed-push.sh"
 
 SANDBOX=$(mktemp -d /tmp/parent-role-hooks-test.XXXXXX)
 trap 'rm -rf "$SANDBOX"' EXIT
@@ -640,6 +641,44 @@ mkdir -p "$CSA"; printf 'waiting\nb\n' > "$PENDING_I"
 NOJQ_PATH="${SANDBOX}/nojq-bin"; mkdir -p "$NOJQ_PATH"
 nojq=$(printf '%s' "$(pre "$(bash_payload "$SID" 'ls')")" | PATH="$NOJQ_PATH" "$(command -v bash)" "$I" 2>/dev/null; echo "rc=$?")
 check 174 I 'jq が無い (PATH から外す) → 素通し (出力なし・exit 0)' 'rc=0' "$nojq"
+reset_markers
+
+echo
+echo "=== J. block-child-renamed-push.sh (PreToolUse Bash。local と remote で branch 名が違う push を子に禁じる — Refs ohishi-exp/rust-ichibanboshi#322) ==="
+# HEAD:<dst> 用の使い捨て repo。HEAD は feat-2 (予定名 feat は別 worktree に握られていた想定)
+JREPO="${SANDBOX}/jrepo"
+git init -q "$JREPO" && git -C "$JREPO" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init \
+  && git -C "$JREPO" checkout -q -b feat-2
+push_check() { # <#> <説明> <期待> <command>
+  check "$1" J "$2" "$3" "$(decision "$(run "$J" "$(bash_payload "$SID" "$4")")")"
+}
+reset_markers; mk_child "$SID"
+echo "--- J-a. 陽性 (deny) ---"
+push_check 175 'feat-2:feat → deny' deny 'git push origin feat-2:feat'
+push_check 176 'refs/heads/ 付きでも名前が違えば deny' deny 'git push origin refs/heads/feat-2:refs/heads/feat'
+push_check 177 '+ 付き (force) の別名も deny' deny 'git push origin +feat-2:feat'
+push_check 178 'HEAD:feat (HEAD が feat-2, -C で指定) → deny' deny "git -C $JREPO push origin HEAD:feat"
+push_check 179 '複合コマンドの後段でも deny' deny 'git status && git push -u origin feat-2:feat'
+echo "--- J-b. 陰性 (allow) ---"
+push_check 180 'git push (refspec 無し) → allow' allow 'git push'
+push_check 181 'git push -u origin feat → allow' allow 'git push -u origin feat'
+push_check 182 'feat:feat → allow' allow 'git push origin feat:feat'
+push_check 183 'HEAD:feat-2 (HEAD と同名) → allow' allow "git -C $JREPO push origin HEAD:feat-2"
+push_check 184 '--delete → allow' allow 'git push origin --delete feat'
+push_check 185 ':feat (削除の refspec) → allow' allow 'git push origin :feat'
+push_check 186 'tag の push → allow' allow 'git push origin v1:refs/tags/v1'
+push_check 187 'git push 以外 (git log) → allow' allow 'git log feat-2:feat'
+push_check 188 'git push 以外 (echo) → allow' allow 'echo git push a:b'
+check 189 J 'child marker 無し → 素通し' allow \
+  "$(reset_markers; decision "$(run "$J" "$(bash_payload "$SID" 'git push origin feat-2:feat')")")"
+mk_child "$SID"
+check 190 J 'session_id の無い payload → 素通し' allow \
+  "$(decision "$(run "$J" '{"tool_name":"Bash","tool_input":{"command":"git push origin feat-2:feat"}}')")"
+check 191 J '壊れた payload → 素通し' allow "$(decision "$(run "$J" 'not json')")"
+nojq=$(printf '%s' "$(bash_payload "$SID" 'git push origin feat-2:feat')" | PATH="$NOJQ_PATH" "$(command -v bash)" "$J" 2>/dev/null; echo "rc=$?")
+check 192 J 'jq が無い → 素通し (出力なし・exit 0)' 'rc=0' "$nojq"
+d=$(run "$J" "$(bash_payload "$SID" 'git push origin feat-2:feat')")
+check 193 J 'deny 文言に [質問] の案内が入る' yes "$(has "$d" '[質問]')"
 reset_markers
 
 echo
