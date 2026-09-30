@@ -5,6 +5,8 @@ description: "Supabase + SQLx プロジェクトのマイグレーションセ�
 
 # Migration Test + Test & Deploy
 
+> rust-alc-api の migration は ippoan/alc-migrations に移した。migration の検証は alc-migrations の CI (replay) で行う (`alc-workers-ops` 参照)。
+
 ## 前提条件
 
 - Docker、`sqlx-cli`、`psql`
