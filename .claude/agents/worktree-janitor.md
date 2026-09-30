@@ -36,9 +36,11 @@ tools: Read, Bash
 ## Bash の許可コマンド (これ以外は実行禁止)
 
 - `git -C <repo絶対パス> fetch origin` (読み取りのみ。失敗しても続行してよい)
-- `gh pr view <N> --repo <owner/repo> --json state,headRefName`
-  (`state` と `headRefName` を 1 回の呼び出しで両方取る。確認 0 の PR head branch
-  判定と確認 1 の MERGED 判定を、この 1 回の結果で行う)
+- `gh pr view <N> --repo <owner/repo> --json state,headRefName,headRefOid`
+  (`state` / `headRefName` / `headRefOid` を 1 回の呼び出しで取る。確認 0 の PR head
+  branch 判定と確認 1 の MERGED 判定を、この 1 回の結果で行う)
+- `git -C <repo絶対パス> rev-parse refs/heads/<branch>`
+  (確認 0 の headRefOid 一致判定用。読み取りのみ)
 - `git -C <repo絶対パス> worktree list --porcelain`
 - `git -C <worktree絶対パス> status --porcelain`
 - `git -C <worktree絶対パス> rev-parse --is-inside-work-tree`
@@ -81,9 +83,21 @@ worktree には一切触れません** — 対象は親が渡した 1 本だけ�
 - `git -C <repo絶対パス> branch --show-current` で得た main clone の現在の branch
 
 **さらに、名前が `claude/` で始まるか、親が渡した PR の head branch であること。**
-PR が渡されているときは `gh pr view <N> --repo <owner/repo> --json state,headRefName`
-の `headRefName` が消す branch名と**完全一致**することで判定する
-(`PR 無し` のときは `claude/` 始まりだけで判定する)。どちらでもなければ消さない。
+PR が渡されているときは `gh pr view <N> --repo <owner/repo> --json
+state,headRefName,headRefOid` の `headRefName` が消す branch名と**完全一致**する
+ことで判定する (`PR 無し` のときは `claude/` 始まりだけで判定する)。
+
+**名前が違っても通る 1 条件 (commit 一致):** local branch 名が `headRefName` と違って
+いても、**`git -C <repo> rev-parse refs/heads/<branch>` が `headRefOid` と完全一致し、
+かつ `state` が `MERGED`** なら、その PR の head branch と同一とみなして通す。
+理由: 名前は付け替えられる (予定の名が別 worktree に握られて `-2` で作り、別名のまま
+push した実例) が、commit SHA の一致は名前より強い同一性だから。
+**この条件は確認 0 の名前判定だけを置き換える** — 他の確認 (main clone でない・
+未コミット変更なし・どこにも checkout されていない・生きた pid なし・main/既定
+branch でない) は全部そのまま通すこと。**headRefOid が一致しない / `state` が
+MERGED でない / PR が渡されていない (`PR 無し`) ときは従来どおり拒否**する。
+
+上のどれにも当たらなければ消さない。
 local の `main` も祖先判定 (確認 1-(b)) だけを見ると通ってしまうため、この確認 0 で
 先に弾く。
 
@@ -161,7 +175,7 @@ branch だけ残った」をそのまま出力に返す (今の運用どおり)�
 
 - **Turn 1**: `git -C <repo> fetch origin` を打ってから (失敗しても続行)、確認に
   要る許可コマンドを**1 メッセージ内で並列実行** (`symbolic-ref` /
-  `branch --show-current` / `gh pr view` / `worktree list` / `status --porcelain`
+  `branch --show-current` / `gh pr view` / `rev-parse refs/heads/<branch>` (PR が渡されたとき) / `worktree list` / `status --porcelain`
   / sessions の走査)。**`PR 無し`のときは `gh pr view` の代わりに**上の merge-base
   (branch ごと。`worktree 無し` でなければ HEAD 用も 1 回) **を並列で実行する。**
   `worktree 無し` のときは `worktree list` / `status --porcelain` / sessions の
@@ -175,7 +189,7 @@ branch だけ残った」をそのまま出力に返す (今の運用どおり)�
 ```
 ## 確認
 - branch名の担保: <OK | main/既定branch/main clone HEAD につき拒否 | claude/でも渡されたPRのheadでもないため拒否>
-- headRefName一致(PRが渡されたときのみ): <一致 | 不一致(headRefName=<>) | -(PR無し)>
+- headRefName一致(PRが渡されたときのみ): <一致 | 不一致(headRefName=<>) | 不一致→headRefOid一致(MERGED)で同一と判定(headRefName=<>, oid=<短縮>) | -(PR無し)>
 - PR: <MERGED | PR無し(全branchがorigin/mainの祖先) | PR無し(独自commit有り: <HEAD|branch名>) | 未MERGED(state=<>) | 確認不可>
 - worktree判定: <OK(worktree) | main clone | 一覧に無し | 対象外(worktree無し)>
 - 未コミット変更: <無し | 有り(件数) | 対象外(worktree無し)>
