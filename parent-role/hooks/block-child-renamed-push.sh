@@ -50,7 +50,7 @@ hit=""
 while IFS= read -r seg; do
   [ -n "$seg" ] || continue
   read -ra tok <<<"$seg"
-  dir="$cwd"; seen_git=0; seen_push=0; skip=0; delete=0
+  dir="$cwd"; seen_git=0; seen_push=0; skip=0
   positional=()
   i=0; n=${#tok[@]}
   while [ "$i" -lt "$n" ]; do
