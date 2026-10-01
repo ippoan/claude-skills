@@ -73,9 +73,10 @@ MISS_TEMPLATE = """[public-text-guard] 拒否された {tool} 呼び出しを走
 
 
 def is_classifier_unavailable(reason: str) -> bool:
-    """拒否の文言が、分類器の不在・無判定を示すか。"""
-    return "Classifier unavailable" in reason or (
-        "auto mode classifier" in reason and "gave no verdict" in reason
+    """拒否の文言が、分類器の不在・無判定を示すか (大文字小文字と空白の幅は無視する)。"""
+    text = " ".join(reason.lower().split())
+    return "classifier unavailable" in text or (
+        "auto mode classifier" in text and "gave no verdict" in text
     )
 
 

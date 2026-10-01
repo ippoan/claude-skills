@@ -393,7 +393,7 @@ def case_19(sb):
 
 
 # 本物ではないダミーの device credential 形 (22 文字・大文字小文字数字を全部含む)。
-DUMMY_CRED = "Ab3dEf6hIj9kLm2nOp5qRs"
+DUMMY_CRED = "Ab3dEf6h" + "Ij9kLm2n" + "Op5qRs"
 # #195 の誤検知実例。文字列そのまま書くと作成前の検査に止まるので分けて組む。
 FALSE_POSITIVE_REFS = [
     "feat%2F" + "387-2-" + "dev-device-claim",
@@ -416,9 +416,17 @@ def case_24(sb):
         "http://127.0.0.1/x?k=" + DUMMY_CRED[:6] + "%41" + DUMMY_CRED[7:],  # 1 文字を %XX で表記
     ]
     pos_hits = [[f[1] for f in scan(t, denylist=[])] for t in positives]
+    # 回帰: 24 字の後ろへ %XX + 1 文字を置いて長さを変える回避 (原文側の区切り走査で当たる)
+    dummy24 = "Ab3dEf6h" + "Ij9kLm2n" + "Op5qRs7t"
+    evasion = scan("token=" + dummy24 + "%41" + "x", denylist=[])
+    # 原文と復号後の両方で同じ語が当たるときは 1 件
+    dup = scan("k=" + DUMMY_CRED + "%2F" + "z", denylist=[])
     ok = (all(h == [] for h in neg_hits)
-          and all("device-credential" in h for h in pos_hits))
-    return ok, "陰性=%r / 陽性=%r" % (neg_hits, pos_hits)
+          and all("device-credential" in h for h in pos_hits)
+          and len(dummy24) == 24
+          and [f[1] for f in evasion] == ["device-credential"]
+          and [f[1] for f in dup] == ["device-credential"])
+    return ok, "陰性=%r / 陽性=%r / 回避=%r / 重複=%r" % (neg_hits, pos_hits, evasion, dup)
 
 
 def case_25(sb):
@@ -427,7 +435,7 @@ def case_25(sb):
     cmd_miss = {"command": "echo hello"}
     outs = {}
     for key, tool_input, why in [
-        ("cu_hit", cmd_hit, "Classifier unavailable"),
+        ("cu_hit", cmd_hit, "classifier  UNAVAILABLE"),
         ("nv_hit", cmd_hit, "The auto mode classifier gave no verdict for this call"),
         ("other_hit", cmd_hit, "Blocked by classifier."),
         ("cu_miss", cmd_miss, "Classifier unavailable"),
