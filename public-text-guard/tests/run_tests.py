@@ -108,14 +108,15 @@ def bash_payload(command: str, session_id: str = "sess-test") -> dict:
     }
 
 
-def denied_payload(tool_name: str, tool_input: dict, session_id: str = "sess-test") -> dict:
+def denied_payload(tool_name: str, tool_input: dict, session_id: str = "sess-test",
+                   deny_reason: str = "Blocked by classifier.") -> dict:
     return {
         "session_id": session_id,
         "hook_event_name": "PermissionDenied",
         "tool_name": tool_name,
         "tool_input": tool_input,
         "tool_use_id": "toolu_test",
-        "reason": "Blocked by classifier.",
+        "reason": deny_reason,
     }
 
 
@@ -391,6 +392,61 @@ def case_19(sb):
         [f[1] for f in in_path], [f[1] for f in standalone], [f[1] for f in cred_in_path])
 
 
+# 本物ではないダミーの device credential 形 (22 文字・大文字小文字数字を全部含む)。
+DUMMY_CRED = "Ab3dEf6hIj9kLm2nOp5qRs"
+# #195 の誤検知実例。文字列そのまま書くと作成前の検査に止まるので分けて組む。
+FALSE_POSITIVE_REFS = [
+    "feat%2F" + "387-2-" + "dev-device-claim",
+    "feat%2F" + "387-3-" + "manager-routes",
+]
+WATCH_URL = "ws://127.0.0.1:8799/watch?repo=example%2Frepo&ref="
+
+
+def case_24(sb):
+    """24 | scan | percent-encode した branch 名は当てず、本物の credential は encode 有無を問わず当てる (#195)"""
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    from scan_public_text import scan  # noqa: PLC0415
+    negatives = [WATCH_URL + ref for ref in FALSE_POSITIVE_REFS]
+    neg_hits = [scan(t, denylist=[]) for t in negatives]
+    positives = [
+        DUMMY_CRED,
+        "token=" + DUMMY_CRED,
+        WATCH_URL + DUMMY_CRED,
+        "http://127.0.0.1/x?k=" + DUMMY_CRED,
+        "http://127.0.0.1/x?k=" + DUMMY_CRED[:6] + "%41" + DUMMY_CRED[7:],  # 1 文字を %XX で表記
+    ]
+    pos_hits = [[f[1] for f in scan(t, denylist=[])] for t in positives]
+    ok = (all(h == [] for h in neg_hits)
+          and all("device-credential" in h for h in pos_hits))
+    return ok, "陰性=%r / 陽性=%r" % (neg_hits, pos_hits)
+
+
+def case_25(sb):
+    """25 | hook 2 | 分類器の無判定拒否では、検出があっても原因と断定しない (#195)"""
+    cmd_hit = {"command": "echo device_id=%s" % SAMPLE_UUID}
+    cmd_miss = {"command": "echo hello"}
+    outs = {}
+    for key, tool_input, why in [
+        ("cu_hit", cmd_hit, "Classifier unavailable"),
+        ("nv_hit", cmd_hit, "The auto mode classifier gave no verdict for this call"),
+        ("other_hit", cmd_hit, "Blocked by classifier."),
+        ("cu_miss", cmd_miss, "Classifier unavailable"),
+    ]:
+        proc, parsed = run_hook(
+            DENIED, denied_payload("Bash", tool_input, deny_reason=why), sb)
+        outs[key] = parsed or {}
+    msg = lambda k: outs[k].get("systemMessage", "")  # noqa: E731
+    retry = lambda k: (outs[k].get("hookSpecificOutput") or {}).get("retry")  # noqa: E731
+    claim = "これが拒否の原因である可能性が高い"
+    ok = (all("分類器側" in msg(k) and claim not in msg(k) and SAMPLE_UUID in msg(k)
+              and not retry(k) for k in ("cu_hit", "nv_hit"))
+          and claim in msg("other_hit") and retry("other_hit") is True
+          and "検出されませんでした" in msg("cu_miss") and "分類器側" not in msg("cu_miss"))
+    return ok, "cu_hit=%s / nv_hit=%s / other_hit=%s / cu_miss=%s" % (
+        "分類器側" in msg("cu_hit"), "分類器側" in msg("nv_hit"),
+        claim in msg("other_hit"), "検出されませんでした" in msg("cu_miss"))
+
+
 # 1〜11 は issue #153 の受け入れ条件そのもの。12〜13 は実装中に見つけた
 # すり抜け (フラグ解析だけに頼ると素通しした) の回帰防止。
 # 14〜23 は issue #157: 作業パスの UUID による誤爆 2 経路 (14/15) と、
@@ -402,7 +458,7 @@ CASES = [case_01, case_02, case_03, case_04, case_05, case_06,
          case_07, case_08, case_09, case_10, case_11,
          case_12, case_13,
          case_14, case_15, case_16, case_17, case_18, case_19, case_20,
-         case_21, case_22, case_23]
+         case_21, case_22, case_23, case_24, case_25]
 
 
 def main() -> int:

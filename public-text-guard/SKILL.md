@@ -81,7 +81,7 @@ public-text-guard/
 | 種別 | 当てる | 備考 |
 |---|---|---|
 | `uuid` | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` | device_id / tenant_id はこの形。大文字表記も当てる |
-| `device-credential` | base64url 20〜24 文字 | 大文字・小文字・数字を**全部**含むものだけ |
+| `device-credential` | base64url 20〜24 文字 | 大文字・小文字・数字を**全部**含むものだけ。走査前に `%XX` を復号する (`ref=feat%2F387-…` の `2F` が続く語と繋がって誤検知した — #195) |
 | `github-token` | `ghp_` / `gho_` / `github_pat_` | prefix が在れば尻尾が短くても当てる |
 | `api-key` / `aws-key` / `private-key` | `sk-…` / `AKIA…` / `-----BEGIN` | |
 | `denylist` | state の語 (1 行 1 語) | **内部ホスト名は repo に書かない**。下記 4 節 |
@@ -146,6 +146,10 @@ stdout は transcript (ctrl+o) 表示のみ、`systemMessage` はユーザー向
    `PreToolUse` hook が pending を回収し、`additionalContext` としてモデルへ渡す
 3. 再試行が公開系の `gh` なら、`PreToolUse` が同じスキャナで改めて deny するので、
    そちらの文言にも当たった語と行が出る
+
+拒否の文言が `Classifier unavailable` / (`auto mode classifier` + `gave no verdict`) のときは、当たっても
+**原因と断定せず** 「原因は分類器側。検出は参考で、伏せて再試行しても直らない。人へ上げよ」と言い分け、
+`retry` を返さない (#195)。
 
 分岐の意味そのものは retry ビットが運ぶ:
 

@@ -24,6 +24,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from urllib.parse import unquote
 
 STATE_DIR = os.path.join(
     os.environ.get("HOME", ""), ".claude", "state", "public-text-guard"
@@ -158,6 +159,10 @@ def scan(text: str, denylist: list[str] | None = None) -> list[tuple[int, str, s
 
     findings: list[tuple[int, str, str]] = []
     for lineno, line in enumerate(text.splitlines(), start=1):
+        # URL の query に入った `%2F` などは復号してから見る。復号しないと `%` の直後の
+        # `2F` が続く語と繋がって 1 つの token になり、`<番号>-<連番>-<slug>` 形の branch 名
+        # (`ref=feat%2F387-2-…`) を device-credential と誤検知する (#195)。
+        line = unquote(line)
         # 同じ文字位置を 2 種類で二重報告しないための占有範囲。
         claimed: list[tuple[int, int]] = []
 

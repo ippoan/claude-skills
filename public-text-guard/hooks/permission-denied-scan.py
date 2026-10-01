@@ -8,6 +8,11 @@
   当たらない → 「検出されなかった。推測で再試行するな。拒否文言を引用して人へ上げよ」
               (`retry` を返さない = モデルは再試行を促されない)
 
+分類器が判定を返さなかった拒否 (`Classifier unavailable` / `auto mode classifier` +
+`gave no verdict`) では、当たっても**原因と断定しない** (3 つ目の文面)。原因は分類器側で、
+値を伏せて再試行しても直らない。検出は参考として載せ、拒否の文言を引用して人へ上げさせる。
+`retry` は返さない。
+
 「点検せずに人へ投げる」と「原因不明のまま再試行する」の**両方**を止めるのが要点。
 
 ## PermissionDenied で返せるもの (実測、claude 2.1.239)
@@ -53,11 +58,25 @@ HIT_TEMPLATE = """[public-text-guard] 拒否された {tool} 呼び出しに次�
 ユーザーへ escalate する前にこれを直すこと。
 (拒否の文言: {reason})"""
 
+CLASSIFIER_TEMPLATE = """[public-text-guard] 拒否された {tool} 呼び出しの拒否の原因は**分類器側**です \
+(判定を返さなかった)。
+下の検出は参考であり、**伏せて再試行しても直りません**。
+拒否の文言を引用してユーザーへ上げてください。
+{detail}
+(拒否の文言: {reason})"""
+
 MISS_TEMPLATE = """[public-text-guard] 拒否された {tool} 呼び出しを走査しましたが、\
 本番識別子・資格情報は**検出されませんでした**。
 
 **推測で再試行しないこと。** 拒否の文言をそのまま引用してユーザーへ上げてください。
 (拒否の文言: {reason})"""
+
+
+def is_classifier_unavailable(reason: str) -> bool:
+    """拒否の文言が、分類器の不在・無判定を示すか。"""
+    return "Classifier unavailable" in reason or (
+        "auto mode classifier" in reason and "gave no verdict" in reason
+    )
 
 
 def safe_session_id(session_id: str) -> str:
@@ -142,7 +161,12 @@ def main() -> int:
     for text in collect_texts(tool_name, tool_input if isinstance(tool_input, dict) else {}):
         findings += scan(text)
 
-    if findings:
+    if findings and is_classifier_unavailable(reason):
+        message = CLASSIFIER_TEMPLATE.format(
+            tool=tool_name, detail="検出 (参考):\n" + format_findings(findings), reason=reason
+        )
+        output = {"systemMessage": message}
+    elif findings:
         message = HIT_TEMPLATE.format(
             tool=tool_name, detail=format_findings(findings), reason=reason
         )
