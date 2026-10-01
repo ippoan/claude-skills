@@ -127,6 +127,12 @@ spawn_task の title は `require-spawn-task-title.sh` が親のセッション�
 4. テストの期待と、**「branch push まで。PR は親が作るので、子は `gh pr create` を
    打たない」** の指示 (交通整理の節)。**「go が来てから作る」と書かない** — 子が
    自分で作ってよいと読める (2026-08-22 の実害。分類器に弾かれる)。Refs する issue 番号。
+   **commit 署名 (`Co-Authored-By`) のモデル名を prompt に直書きしない** — 「commit の署名は、
+   自分のセッションに届く harness の attribution の指示に従う」とだけ書く。子のモデルは起動後に
+   切り替わることがある (`[S]` のチップが Opus で起動し、途中で Sonnet になる) ので、親が書いた名前は
+   実際に commit を書くモデルと食い違う (2026-10-01: 「Opus 5.5」と直書きした子 4 本のうち 3 本が、
+   Sonnet へ切り替わった後も Opus の署名で計 7 回 commit した。Refs ohishi-exp/nuxt-dtako-admin#1133)。
+   子側の受け方は [[report-to-parent]] にある — **片方だけ直さないこと**。
 
 4.5 **★ 実機確認の「いつ・誰が・どこで」を prompt に書く (2026-08-22、オーナー指示)。**
    **チップを作る前に親が決めること。** 書かないと子が終わり際に dev を立てようとし、
