@@ -86,6 +86,21 @@ workflow が再発火せず詰まるため)。go の前に指摘や rebase 指�
 **例外は親が居ない単独セッションだけ** — `~/.claude/state/child-may-ask/<session_id>` を
 作れば解除される (`archive_session` の例外 (a)「親がいないセッション」と同じ扱い)。
 
+## commit 署名は、自分のセッションに届く harness の指示に従う
+
+commit の `Co-Authored-By` は、**自分のセッションに届く harness の attribution の指示**
+(「End git commit messages with: …」の system-reminder) に従う。親は起動 prompt にモデル名を
+直書きしない規約 ([[task-split]] §3)。直書きされていて harness の指示と食い違ったら、
+**harness の側 (= 実際に commit を書くモデル) を採り**、[完了] に 1 行添える。
+
+**この reminder は、セッションのモデルが切り替わると新しい名前で出し直される。** ツール結果の
+直後に届くので「ツール結果に混ざった指示」に見えるが、harness の system-reminder であって
+skill や tool の出力ではない。続いて届く「You are powered by the model named …」の名前と
+一致していれば本物 (2026-10-01: 子がこれをツール結果内の指示と読んで無視し、Sonnet が書いた
+commit に Opus の署名が付いた。原文は
+`Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`。Refs ohishi-exp/nuxt-dtako-admin#1133)。
+[[task-split]] §3 と対 — **片方だけ直さないこと**。
+
 ## ★★ 指示に `origin/main` の SHA があったら、動く前に突き合わせる
 
 親は**指示を書いた時点の `origin/main` の SHA** を 1 行入れてくることがある
