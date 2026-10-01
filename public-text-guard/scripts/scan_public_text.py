@@ -24,6 +24,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from urllib.parse import unquote
 
 STATE_DIR = os.path.join(
     os.environ.get("HOME", ""), ".claude", "state", "public-text-guard"
@@ -151,6 +152,68 @@ def redact(kind: str, match: str) -> str:
     return match[:8] + "…(以下 %d 文字)" % (len(match) - 8)
 
 
+PERCENT_ESC_RE = re.compile(r"%[0-9A-Fa-f]{2}")
+
+
+def _line_variants(line: str) -> list[str]:
+    """1 行を走査する見え方の一覧 (重複は除く)。
+
+    URL の query に入った `%2F` などで、`%` の直後の 2 桁が続く語と繋がると、
+    `ref=feat%2F387-2-…` の `2F387-2-…` が 1 つの token になり、branch 名を
+    device-credential と誤検知する (#195)。かといって復号後だけを見ると、資格情報の後ろへ
+    `%41` を置くだけで長さが変わって検査を回避できる。そこで 2 つを合併する:
+
+      - 原文の `%XX` を空白 (同じ長さ) に置き換えたもの …… `%XX` を token の区切りとして扱う
+      - 復号後 (`urllib.parse.unquote`) …… 資格情報の 1 文字が `%XX` で書かれた形を拾う
+    """
+    masked = PERCENT_ESC_RE.sub(lambda m: " " * len(m.group(0)), line)
+    variants = [masked]
+    decoded = unquote(line)
+    if decoded != masked:
+        variants.append(decoded)
+    return variants
+
+
+def _scan_variant(line: str, denylist: list[str]) -> list[tuple[str, str]]:
+    """1 つの見え方を走査し `(種別, 語)` の一覧を返す。"""
+    findings: list[tuple[str, str]] = []
+    # 同じ文字位置を 2 種類で二重報告しないための占有範囲。
+    claimed: list[tuple[int, int]] = []
+
+    def _claim(span: tuple[int, int]) -> bool:
+        for start, end in claimed:
+            if span[0] < end and start < span[1]:
+                return False
+        claimed.append(span)
+        return True
+
+    for m in UUID_RE.finditer(line):
+        if _is_placeholder_uuid(m.group(0)) or _is_path_uuid(line, m.span()):
+            _claim(m.span())  # 見本もパスも占有はする (device 風で拾い直さないため)
+            continue
+        if _claim(m.span()):
+            findings.append(("uuid", m.group(0)))
+
+    for kind, regex in CREDENTIAL_RES:
+        for m in regex.finditer(line):
+            if _claim(m.span()):
+                findings.append((kind, m.group(0)))
+
+    for m in TOKENISH_RE.finditer(line):
+        token = m.group(0)
+        if not _is_device_credential(token):
+            continue
+        if _claim(m.span()):
+            findings.append(("device-credential", token))
+
+    low = line.lower()
+    for word in denylist:
+        idx = low.find(word.lower())
+        if idx >= 0 and _claim((idx, idx + len(word))):
+            findings.append(("denylist", word))
+    return findings
+
+
 def scan(text: str, denylist: list[str] | None = None) -> list[tuple[int, str, str]]:
     """テキストを走査し `(行番号, 種別, 語)` の一覧を返す。当たりが無ければ空。"""
     if denylist is None:
@@ -158,40 +221,12 @@ def scan(text: str, denylist: list[str] | None = None) -> list[tuple[int, str, s
 
     findings: list[tuple[int, str, str]] = []
     for lineno, line in enumerate(text.splitlines(), start=1):
-        # 同じ文字位置を 2 種類で二重報告しないための占有範囲。
-        claimed: list[tuple[int, int]] = []
-
-        def _claim(span: tuple[int, int]) -> bool:
-            for start, end in claimed:
-                if span[0] < end and start < span[1]:
-                    return False
-            claimed.append(span)
-            return True
-
-        for m in UUID_RE.finditer(line):
-            if _is_placeholder_uuid(m.group(0)) or _is_path_uuid(line, m.span()):
-                _claim(m.span())  # 見本もパスも占有はする (device 風で拾い直さないため)
-                continue
-            if _claim(m.span()):
-                findings.append((lineno, "uuid", m.group(0)))
-
-        for kind, regex in CREDENTIAL_RES:
-            for m in regex.finditer(line):
-                if _claim(m.span()):
-                    findings.append((lineno, kind, m.group(0)))
-
-        for m in TOKENISH_RE.finditer(line):
-            token = m.group(0)
-            if not _is_device_credential(token):
-                continue
-            if _claim(m.span()):
-                findings.append((lineno, "device-credential", token))
-
-        low = line.lower()
-        for word in denylist:
-            idx = low.find(word.lower())
-            if idx >= 0 and _claim((idx, idx + len(word))):
-                findings.append((lineno, "denylist", word))
+        seen: set[tuple[str, str]] = set()
+        for variant in _line_variants(line):
+            for kind, word in _scan_variant(variant, denylist):
+                if (kind, word) not in seen:  # 原文と復号後の両方で当たった語は 1 件
+                    seen.add((kind, word))
+                    findings.append((lineno, kind, word))
 
     findings.sort(key=lambda f: (f[0], f[1]))
     return findings
