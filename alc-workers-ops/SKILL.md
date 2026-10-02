@@ -50,8 +50,10 @@ Tunnel ID・Supabase の project ref・プーラーのホスト名はここに�
 - 本番は `workers_dev = false`・`preview_urls = false`・route なし。
   **auth-worker から Service Binding でだけ呼ばれる**。
 - `scripts/check-exposure.sh` と陰性対照 `check-exposure-test.sh` は worker の repo に在り、その repo の CI で回す。
-  **陰性対照は wrangler.toml の特定の表の直前に行を挿す作りなので、末尾に表を足すと
-  検出できなくなる** (rust-alc-api#698 で実際に踏んだ)。
+  **陰性対照は、`[build]` の初出の直前と `[env.staging.observability]` の直前に行を挿して崩す作り**
+  (挿した行がトップレベル / `[env.staging]` に入る前提)。**`[build]` より前に表を足す、または
+  `[env.staging]` と `[env.staging.observability]` の間に表を挟むと、挿した行がその表の中に入り、
+  検査が意味を失う。** 新しい表は `[build]` より後に置く (経緯は ippoan/rust-alc-api#698)。
 - JWT を検証するのは auth-worker だけ。domain worker は付け直されたヘッダ
   (`X-Tenant-ID` 等) を信頼する。
 
