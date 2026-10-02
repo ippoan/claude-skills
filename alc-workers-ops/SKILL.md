@@ -1,6 +1,6 @@
 ---
 name: alc-workers-ops
-description: rust-alc-api を Cloudflare Workers に分割した後の運用 (migration の置き場、worker のデプロイと版、secret、auth-worker の振り分け)。rust-alc-api / alc-migrations / auth-worker / 分割 worker の repo (alc-vein-worker 等) を触る前に読む。トリガー: migration / マイグレーション / alc-migrations / alc-vein-worker / 分割 worker の repo / worker デプロイ / Service Binding / ALC_VEIN / version_metadata / 6543 / Supavisor 等。
+description: rust-alc-api を Cloudflare Workers に分割した後の運用 (migration の置き場、worker のデプロイと版、secret、auth-worker の振り分け)。rust-alc-api / alc-migrations / auth-worker / 分割 worker の repo (alc-vein-worker 等) を触る前に読む。トリガー: migration / マイグレーション / alc-migrations / alc-vein-worker / alc-worker-kit / alc-worker-db / 分割 worker の repo / worker デプロイ / Service Binding / ALC_VEIN / version_metadata / Hyperdrive / tenant_tx / query_typed / 6543 / Supavisor 等。
 ---
 
 # alc-workers-ops — 分割 worker と migration の運用
@@ -8,8 +8,10 @@ description: rust-alc-api を Cloudflare Workers に分割した後の運用 (mi
 rust-alc-api を Cloudflare Worker に分割していく運用 (ippoan/rust-alc-api#697)。
 **worker は worker ごとに別の repo に置く** (最初は ippoan/alc-vein-worker。
 ippoan/rust-alc-api#721。2026-10-02 までは rust-alc-api の `workers/vein/` に在った)。
-vein が最初の worker で本番に出ている。**事実だけを書く。ホスト名・IP・account ID・
-Tunnel ID・Supabase の project ref・プーラーのホスト名はここにも PR にも書かない。**
+vein が最初の worker で本番に出ている (2026-10-02 に、本番の DB 接続を Hyperdrive 経由にした。
+ippoan/rust-alc-api#723)。**事実だけを書く。ホスト名・IP・account ID・
+Tunnel ID・Supabase の project ref・プーラーのホスト名・Hyperdrive の設定の ID・証明書の ID は
+ここにも PR にも書かない。**
 
 ## 1. migration の正本は ippoan/alc-migrations
 
@@ -47,8 +49,19 @@ Tunnel ID・Supabase の project ref・プーラーのホスト名はここに�
   全リクエストが 500 になる** (tenant ヘッダーの layer が入れる型と route が取り出す型が合わない)。
   backend と worker の両方が同じ route の crate を使う形 (ひし形) を作らない。
   確かめ方: `cargo tree -i alc-core-wasm --target wasm32-unknown-unknown` で出どころが 1 つ。
+- **DB の部品の共有 crate `alc-worker-db` は ippoan/alc-worker-kit (public) に在る** (`crates/alc-worker-db`。
+  いま kit に在る crate はこの 1 つ)。引き方は `alc-core-wasm` と同じ: **git 依存 (rev 固定)** で、直下の
+  `[workspace.dependencies]` の **1 か所にだけ**書き、worker と `crates/<名前>` は `workspace = true` で継承する
+  (出どころが 2 つになると `PgClient` が別の型になる)。**kit は tag を打たない。** kit は `alc-core-wasm` に依存しない。
+  最初の利用者は vein で、2 本目 (ippoan/rust-alc-api#725) もこの crate を引く予定。
+  rev を上げたら `cargo update -p alc-worker-db` で `Cargo.lock` も更新し、worker の repo の実 DB のテストを通す。
+- `worker`・`tokio-postgres` も、kit と利用側で 1 つの版に解決すること
+  (`cargo tree -i <名前> --target wasm32-unknown-unknown` で確かめる)。
 - 本番は `workers_dev = false`・`preview_urls = false`・route なし。
   **auth-worker から Service Binding でだけ呼ばれる**。
+- **Hyperdrive の binding (`[[hyperdrive]]`) はトップレベル (本番) にだけ置く。** `env.*` の下
+  (staging を含む) の hyperdrive は `scripts/check-exposure.sh` が落とす (本番の DB へ届く binding を、
+  workers.dev が開いている staging に置かないため)。binding は env に継承されない。
 - `scripts/check-exposure.sh` と陰性対照 `check-exposure-test.sh` は worker の repo に在り、その repo の CI で回す。
   **陰性対照は、`[build]` の初出の直前と `[env.staging.observability]` の直前に行を挿して崩す作り**
   (挿した行がトップレベル / `[env.staging]` に入る前提)。**`[build]` より前に表を足す、または
@@ -86,17 +99,53 @@ Tunnel ID・Supabase の project ref・プーラーのホスト名はここに�
   ユーザー「orgつかえよ」)。
 - **Secret Manager に secret を増やさない。** 先に既存のものが使えないか確かめる
   (ユーザー「すでに secret 入ってるはずでしょ ふやすな」)。
-- vein の本番の DB 接続は、Secrets Store の binding `VEIN_DATABASE_URL` から接続文字列を読む形
-  (ippoan/rust-alc-api#720。値はどこにも出さない)。Hyperdrive 経由に替える予定が在る
-  (ippoan/rust-alc-api#723、未着手)。
+- **vein の本番の DB 接続は Hyperdrive 経由** (binding `VEIN_HYPERDRIVE`。alc-vein-worker のタグ `v0.1.1`、
+  ippoan/rust-alc-api#723)。それまでの Secrets Store の binding `VEIN_DATABASE_URL` の段
+  (ippoan/rust-alc-api#720) は無くなった。`wrangler.toml` に書くのは Hyperdrive の設定の ID だけで、
+  接続先と資格情報は設定の側に在る (repo に書かない)。
+- **Hyperdrive の設定は、実行用ロールのもの 1 つを複数の worker で共有する** (worker ごとに作らない)。
+  query caching は無効。
+- 設定の作成・更新 (`wrangler hyperdrive create` / `update`) は**オーナーの端末で打つ**。出力に接続先が
+  含まれるので、貼るのは必要な項目だけ。値を人にも LLM にも見せない。
+- **DB の証明書の検証 (`verify-full`) は設定の側に在り、repo と CI からは検査できない。** 設定は共有なので、
+  後の `hyperdrive update` で戻っても repo は気づけない。確かめ方: `npx wrangler hyperdrive get <ID>` の
+  `mtls.sslmode` が `verify-full`・`caching.disabled` が `true` (貼るのはその 2 項目だけ)。
+- **資格情報の入れ直し (rotate) は 2 か所**: Secret Manager の secret と、Hyperdrive の設定。設定の更新は
+  反映された時点から効く (worker の deploy は要らない)。
 
 ## 5. DB 接続の規範
 
 - monolith (session スコープの RLS) は直接接続の 5432。
-- worker は `in_tenant_tx` でトランザクション単位の RLS (`set_config(..., true)`) にする
-  場合に限り 6543。
-- Row を COMMIT 後まで持つと 42P05 になるので、戻り値は `TxOutput`。
+- worker は `alc-worker-db` の `PgClient::tenant_tx` を通してトランザクション単位の RLS
+  (`BEGIN` → `set_config(..., true)` と search_path → 本文 → `COMMIT`) にする場合に限り 6543。
+  テナントを設定しない transaction を作る口は無い。
+- Row を COMMIT 後まで持つと 42P05 になるので、戻り値は `TxOutput` (transaction の外へ持ち出してよい
+  owned な値の印。`Row` には付かないので、外へ返すコードはコンパイルが通らない)。
+- **名前付き prepared statement (tokio-postgres の `execute`・`query`・`query_one`・`query_opt`・`prepare`) を
+  呼ばない。Hyperdrive 経由では接続が切れる。** 使うのは `TenantTx` の `query_typed`・`query_typed_one`・
+  `query_typed_opt`・`execute_typed` (型付きの名前なしの文)。kit は `Client` と `Transaction` を呼び手に
+  渡さない型で塞いでいる (`PgClient` の口は `new`・`current_user`・`tenant_tx` の 3 つ、`TenantTx` は上の 4 つ)。
+  同じ文は staging の PgBouncer (transaction mode、`max_prepared_statements = 0`) も通る
+  (staging と本番で同じコードが動き、違うのは接続の段だけ)。
+- 型で塞げないもの: 型付きの 1 文として `COMMIT` や `set_config(.., false)` を流すこと。SQL の中身は
+  各 worker の定数とレビューで見る。
+- `tenant_tx` の閉包の制約は 2 つ。借用 (`&str` など) を持ち込めない (先に owned にして
+  `move |tx| Box::pin(async move { … })`)。Future に `Send` を要求するので、R2 など JS の値の await を
+  transaction の中に挟めない (短い transaction を 2 回に分ける)。
+- Hyperdrive への接続は kit の `hyperdrive::connect` (wasm32 専用): binding が無い = `Ok(None)` /
+  在るのに使えない = `Err` / 繋がった = `Ok(Some)`。エラーは `kind` で識別子を含まない label に落とす。
+- vein の `src/db.rs` の段の順: VPC (staging) → DO (staging の fallback) → Hyperdrive `VEIN_HYPERDRIVE` (本番) →
+  文字列 `DATABASE_URL` (ローカル専用)。**Hyperdrive の binding が在るのに使えないときは 500 で、次の段へ
+  落ちない** (落ちるのは binding が無いときだけ)。staging は Hyperdrive を通さない (VPC → PgBouncer のまま)。
+  ローカルの `wrangler dev` は binding を持たない `--env local` で立てる。
+- vein の repo の実装は `crates/alc-vein/src/pg.rs` の 1 つで、worker と実 DB のテスト (`sql_db.rs`) が同じものを使う。
+- **Hyperdrive の経路は CI では通せない** (ローカルの `wrangler dev` は Hyperdrive を通らない。kit の
+  `hyperdrive` module は native では compile されず、CI が見るのは wasm32 の clippy とビルドまで)。
+  配信せずに実物を通す手段: `npx wrangler@latest dev --remote --env <env> --test-scheduled` を立てて
+  `/__scheduled` を叩く (ippoan/workers-rs-containers-lab の `probe-hyperdrive/`。外から届く口を持たない実験用 worker)。
 - worker は `placement.region` を DB の近く (`aws:ap-northeast-1`) に固定する。
+  placement は fetch で呼ばれる worker には効くが、定時実行と `wrangler dev --remote` には効かない
+  (速度はそこでは測れない)。
 
 ## 6. auth-worker の振り分け
 
@@ -109,5 +158,6 @@ Tunnel ID・Supabase の project ref・プーラーのホスト名はここに�
 
 ## 7. 関連
 
-rust-alc-api#697 / #680 / #695 / #721 / #723 / #725、ippoan/alc-vein-worker、ippoan/alc-migrations、rust-alc-api の `rust-alc-api-map` skill、
+rust-alc-api#697 / #680 / #695 / #721 / #723 / #725、ippoan/alc-vein-worker、ippoan/alc-worker-kit、
+ippoan/workers-rs-containers-lab (`probe-hyperdrive/`)、ippoan/alc-migrations、rust-alc-api の `rust-alc-api-map` skill、
 `migrate-test` skill。
