@@ -1,11 +1,13 @@
 ---
 name: alc-workers-ops
-description: rust-alc-api を Cloudflare Workers に分割した後の運用 (migration の置き場、worker のデプロイと版、secret、auth-worker の振り分け)。rust-alc-api / alc-migrations / auth-worker / workers/* を触る前に読む。トリガー: migration / マイグレーション / alc-migrations / workers/vein / worker デプロイ / worker-vein / Service Binding / ALC_VEIN / version_metadata / 6543 / Supavisor 等。
+description: rust-alc-api を Cloudflare Workers に分割した後の運用 (migration の置き場、worker のデプロイと版、secret、auth-worker の振り分け)。rust-alc-api / alc-migrations / auth-worker / 分割 worker の repo (alc-vein-worker 等) を触る前に読む。トリガー: migration / マイグレーション / alc-migrations / alc-vein-worker / 分割 worker の repo / worker デプロイ / Service Binding / ALC_VEIN / version_metadata / 6543 / Supavisor 等。
 ---
 
 # alc-workers-ops — 分割 worker と migration の運用
 
 rust-alc-api を Cloudflare Worker に分割していく運用 (ippoan/rust-alc-api#697)。
+**worker は worker ごとに別の repo に置く** (最初は ippoan/alc-vein-worker。
+ippoan/rust-alc-api#721。2026-10-02 までは rust-alc-api の `workers/vein/` に在った)。
 vein が最初の worker で本番に出ている。**事実だけを書く。ホスト名・IP・account ID・
 Tunnel ID・Supabase の project ref・プーラーのホスト名はここにも PR にも書かない。**
 
@@ -31,11 +33,23 @@ Tunnel ID・Supabase の project ref・プーラーのホスト名はここに�
 
 ## 2. 分割 worker の置き場と公開範囲
 
-- rust-alc-api の `workers/<名前>/` に**独立した Cargo workspace** として置く (vein が最初)。
-  ターゲットは `wasm32-unknown-unknown`、`worker-build` 0.8.7。
+- **worker ごとに別の repo** に置く (vein は ippoan/alc-vein-worker。オーナーが vein で選んだ形で、
+  2 本目 = ippoan/rust-alc-api#725 もこれに合わせる予定)。同じ repo に在ると、worker だけの変更でも
+  backend の CI・タグ `v*`・再配信・Release Wave が動き、rust-alc-api の「作者あたり open PR 1 本」も
+  取り合うため (ippoan/rust-alc-api#721)。
+- alc-vein-worker の配置: worker は repo の直下 (`Cargo.toml`・`wrangler.toml`・`src/`・`scripts/`・
+  `tests/`・`container/`)、route の crate は `crates/<名前>/` (vein は `crates/alc-vein/`)。直下の
+  `Cargo.toml` が workspace の root で、`Cargo.lock` は 1 つ。ターゲットは `wasm32-unknown-unknown`、
+  `worker-build` 0.8.7。
+- **共有 crate `alc-core-wasm` は rust-alc-api に残り**、worker の repo から **git 依存 (rev 固定)** で引く。
+  直下の `[workspace.dependencies]` の **1 か所にだけ**書き、worker と `crates/<名前>` は
+  `workspace = true` で継承する。**出どころが 2 つになると `TenantId` が別の型になり、コンパイルは通るのに
+  全リクエストが 500 になる** (tenant ヘッダーの layer が入れる型と route が取り出す型が合わない)。
+  backend と worker の両方が同じ route の crate を使う形 (ひし形) を作らない。
+  確かめ方: `cargo tree -i alc-core-wasm --target wasm32-unknown-unknown` で出どころが 1 つ。
 - 本番は `workers_dev = false`・`preview_urls = false`・route なし。
   **auth-worker から Service Binding でだけ呼ばれる**。
-- `scripts/check-exposure.sh` と陰性対照 `check-exposure-test.sh` を CI で回す。
+- `scripts/check-exposure.sh` と陰性対照 `check-exposure-test.sh` は worker の repo に在り、その repo の CI で回す。
   **陰性対照は wrangler.toml の特定の表の直前に行を挿す作りなので、末尾に表を足すと
   検出できなくなる** (rust-alc-api#698 で実際に踏んだ)。
 - JWT を検証するのは auth-worker だけ。domain worker は付け直されたヘッダ
@@ -43,13 +57,18 @@ Tunnel ID・Supabase の project ref・プーラーのホスト名はここに�
 
 ## 3. デプロイと版
 
-- `.github/workflows/vein-deploy.yml`:
-  - tag `worker-vein-v*` → 本番に `wrangler deploy --tag <タグ> --message <git SHA>`
-  - main への merge (vein 関連の paths) → staging
-  - PR → `--dry-run`
-- 本番のタグは `/tag-release` を `target=worker-vein` で打つ (共通 tag-release の `prefix`)。
-- **`vein-v*` は使えない**: monolith の `v*` (ci.yml / deploy.yml) に当たり、本番の
-  migration とデプロイが発火する。worker のタグは `worker-<名前>-v*`。
+- worker の repo の `.github/workflows/deploy.yml` (alc-vein-worker):
+  - PR → `wrangler deploy --dry-run`
+  - main への merge → staging (`--env staging`)
+  - **タグ `v*` → 本番**に `wrangler deploy --tag <タグ> --message <git SHA>`
+- 本番のタグは、その repo の Tag Release (手動 `workflow_dispatch`、入力 `bump` = patch / minor / major)
+  で打つ。**マージでの自動タグは無い** (マージ = staging、手動のタグ = 本番)。手で `v*` を push しない。
+  タグが 1 つも無いときの最初は `bump=minor` で `v0.1.0`。
+- 単独 repo なので `v*` が backend のタグと当たらない。**rust-alc-api の `tag-release.yml` から入力
+  `target` は無くなった**ので、接頭辞付きのタグ (`worker-vein-v*`) と `target=worker-vein` はもう使わない。
+  rust-alc-api で `v*` を打つと backend の本番 migration と配信が走るのは今までどおり。
+- staging の DB の image が使う SQL は、ippoan/alc-migrations を rev 固定で取る
+  (worker の repo の `container/ALC_MIGRATIONS_REV` と `scripts/fetch-migrations.sh`)。
 - 応答ヘッダ `x-worker-version` (Cloudflare の version id) と `x-worker-tag` で、どの版が
   応答したか分かる。`[version_metadata]` は env に継承されないので、**トップレベルと
   `env.staging` の両方**に書く。
@@ -61,12 +80,13 @@ Tunnel ID・Supabase の project ref・プーラーのホスト名はここに�
 ## 4. secret と token
 
 - Cloudflare の token は **org の secret `CLOUDFLARE_API_TOKEN`** を使う。repo 単位に同名の
-  secret を置かない (repo 単位の古い無効な token が org を上書きしてデプロイが落ちた。
+  secret を置かない (新しい worker の repo でも同じ。repo 単位の古い無効な token が org を上書きしてデプロイが落ちた。
   ユーザー「orgつかえよ」)。
 - **Secret Manager に secret を増やさない。** 先に既存のものが使えないか確かめる
   (ユーザー「すでに secret 入ってるはずでしょ ふやすな」)。
-- vein の本番 `DATABASE_URL` は、既存の DB 接続の secret を元に shell の中で Supavisor 用
-  (東京・6543・transaction mode) に組み替えて `wrangler secret put` した (値はどこにも出さない)。
+- vein の本番の DB 接続は、Secrets Store の binding `VEIN_DATABASE_URL` から接続文字列を読む形
+  (ippoan/rust-alc-api#720。値はどこにも出さない)。Hyperdrive 経由に替える予定が在る
+  (ippoan/rust-alc-api#723、未着手)。
 
 ## 5. DB 接続の規範
 
@@ -87,5 +107,5 @@ Tunnel ID・Supabase の project ref・プーラーのホスト名はここに�
 
 ## 7. 関連
 
-rust-alc-api#697 / #680 / #695、ippoan/alc-migrations、rust-alc-api の `rust-alc-api-map` skill、
+rust-alc-api#697 / #680 / #695 / #721 / #723 / #725、ippoan/alc-vein-worker、ippoan/alc-migrations、rust-alc-api の `rust-alc-api-map` skill、
 `migrate-test` skill。
