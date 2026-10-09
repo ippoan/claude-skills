@@ -13,8 +13,7 @@
 #
 # 命名規約の正本は task-split skill §1:
 #   親        `#p<issue> <題>`            (★ #p<数字> の直後がスペース)
-#   子 (枝)   `[S]/[O] #c<親issue>-<番号> <題>`
-#   子 (自issue) `[S]/[O] #p<親issue>-c<子issue> <題>`
+#   子        `[S]/[O] #p<親issue>-c<番号> <題>`   (<番号> は子の issue 番号か分岐番号)
 #   旧親      `[旧] #p<issue> <題>`
 #
 # ★ tool_input.session_id == "self" のときだけ働く。他セッションの改名 (旧親を [旧] へ
@@ -42,7 +41,7 @@ sid_safe=$(printf '%s' "$sid" | tr -c 'A-Za-z0-9_-' '_')
 if printf '%s' "$title" | grep -qE '^\[旧\] #p'; then
   # 交代した旧親。どちらの役でもない
   rm -f "${PARENT_DIR}/${sid_safe}" "${CHILD_DIR}/${sid_safe}" 2>/dev/null || true
-elif printf '%s' "$title" | grep -qE '#c[0-9]+-|#p[0-9]+-c'; then
+elif printf '%s' "$title" | grep -qE '#p[0-9]+-c'; then
   : > "${CHILD_DIR}/${sid_safe}" 2>/dev/null || true
   rm -f "${PARENT_DIR}/${sid_safe}" 2>/dev/null || true
 elif printf '%s' "$title" | grep -qE '^#p[0-9]+ '; then

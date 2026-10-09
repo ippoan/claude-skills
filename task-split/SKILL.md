@@ -27,12 +27,11 @@ sessionId を引く)。**逆引きキーは案件ごとに 1 本だけ**にす�
 | 役 | タイトルの形 | 例 |
 |---|---|---|
 | 親 (監督) | `#p<issue> <短い題>` | `#p874 netprint の監督` |
-| 子 — 親と同じ issue の枝 | `[S]`/`[O]` + `#c<親issue>-<分岐番号> <短い題>` | `[S] #c874-12 通知先を画面から設定する` |
-| 子 — **自分の issue を持つ** | `[S]`/`[O]` + `#p<親issue>-c<子issue> <短い題>` | `[S] #p874-c987 Secrets Store の掃除` |
+| 子 | `[S]`/`[O]` + `#p<親issue>-c<番号> <短い題>` (`<番号>` は子の issue 番号か分岐番号) | `[S] #p874-c987 Secrets Store の掃除` / `[S] #p874-c12 通知先を画面から設定する` |
 | **別案件の親を新規に立てる** | `[S]`/`[O]` + `#p<issue> <短い題>` | `[S] #p353 遠隔点呼の点呼種別の監督` |
 | 交代前の旧親 | `[旧] #p<issue> <短い題>` | `[旧] #p874 netprint の監督` |
 
-`#p` / `#c` で親子が一目で分かり、`<issue>` が一致するものだけが同じ案件。
+`#p<issue> ` (直後がスペース) と `#p<issue>-c…` で親子が一目で分かり、`<issue>` が一致するものだけが同じ案件。
 一覧に複数案件の親子が並んでも、どの子がどの親に属すかを突き合わせ無しで済む。
 
 **「別案件の親を新規に立てる」チップは、起動後は本人が接頭辞を外して `#p<issue> <題>`
@@ -41,15 +40,17 @@ sessionId を引く)。**逆引きキーは案件ごとに 1 本だけ**にす�
 「親 (監督)」の形と同じ)。改名前の `[S]/[O] #p<issue> <題>` はどの marker 分岐にも
 当たらず素通りするので、改名するまでは親 marker が立たない。
 
-spawn_task の title は `require-spawn-task-title.sh` が親のセッションで検査し、4 形
-(枝の子・自 issue の子・別案件の新しい親・後継の親) に当たらなければ拒否する。
+spawn_task の title は `require-spawn-task-title.sh` が親のセッションで検査し、3 形
+(子・別案件の新しい親・後継の親) に当たらなければ拒否する。
 別案件の新しい親 (`[S]/[O] #p<issue> <題>`) だけは、既存の親 issue 番号との照合を飛ばす
 (別案件だから当然不一致になるため。Refs ippoan/claude-skills#186)。
 
-**子の issue が親と分かれるときは `#p<親issue>-c<子issue>`** (ユーザー指示 2026-08-25)。
-`#c874-12` の `12` は**分岐番号**、`#p874-c987` の `987` は**子自身の issue 番号**で、
-`#p` が前置されているかどうかで読み分ける。番号だけ見て取り違えないこと。
+**子の形は `#p<親issue>-c<番号>` の 1 つだけ** (ユーザー指示 2026-10-09、Refs ippoan/claude-code-web-split-view#19)。
+`c` の後は**子自身の issue 番号でも分岐番号でもよく、見分けない** (`#p874-c987` も `#p874-c12` も同じ形)。
+分岐番号は従来どおり「台帳で使用済みの最大 + 1」。
 子の issue の下でさらに PR が分かれるなら末尾に分岐番号を足す (`#p874-c987-2`)。
+以前あった `#c<親issue>-<分岐番号>` (枝の子) の形は廃止した — 起動済みの子の題はそのままでよいが、
+新しく spawn_task する題は `require-spawn-task-title.sh` が deny する。
 
 ### ★ 親の判定は「`#p<issue>` の直後がスペース」
 
@@ -58,7 +59,7 @@ spawn_task の title は `require-spawn-task-title.sh` が親のセッション�
 隣の子は引けてしまう)。したがって判定はこう書く:
 
 - **親** = `#p<issue>` の**直後がスペース**のもの (`#p874 …`)。`[旧]` 付きは除く
-- **子** = `#c<親issue>-…` または `#p<親issue>-c…`
+- **子** = `#p<親issue>-c…`
 
 `<issue>` の前方一致だけで済ませない — `#p87` が `#p874` を引くのも同じ穴。
 
@@ -96,13 +97,13 @@ spawn_task の title は `require-spawn-task-title.sh` が親のセッション�
 
 ## 2. 分割の原則
 
-- **名前は `#c<親issue>-<分岐番号> <短い題>`** (子が自分の issue を持つなら
-  `#p<親issue>-c<子issue> <短い題>`。§1 の命名規約)。spawn_task の title に必ず
-  この形で付ける (例: 「[S] #c205-1 fold の読み分離と unnest 化」)。
+- **名前は `#p<親issue>-c<番号> <短い題>`** (`<番号>` は子の issue 番号か分岐番号。
+  §1 の命名規約)。spawn_task の title に必ず
+  この形で付ける (例: 「[S] #p205-c1 fold の読み分離と unnest 化」)。
   分岐番号は依存順 (= マージ順) と
   一致させる。同じ `<issue>-<番号>` キーを worktree の branch 名
   (`fix/<issue>-<番号>-<slug>` 等)・テスト DB コンテナ名・子からの報告の名乗りまで
-  一気通貫で使う (branch 名やコンテナ名には `#c` を付けず `<issue>-<番号>` だけを
+  一気通貫で使う (branch 名やコンテナ名には `#p` や `c` を付けず `<issue>-<番号>` だけを
   使う) — どの PR / セッション / コンテナがどのタスクかを突き合わせ無しで
   読めるようにするため。対応する issue が無い作業は先に issue を立てる。
 - **1 タスク = 1 PR。** レビューできる大きさに切る。
@@ -248,14 +249,14 @@ settings.json が `sonnet` の状態で、直接 spawn した子は `claude-sonn
 **推奨モデルは title の先頭に `[S]` / `[O]` で書く** (ユーザー指示 2026-07-31)。
 
 ```
-[S] #c205-17 recalc_month も warnings が出た回は指紋を刻まない
-[O] #c205-19 142 行差の原因究明 (ローカル再現)
+[S] #p205-c17 recalc_month も warnings が出た回は指紋を刻まない
+[O] #p205-c19 142 行差の原因究明 (ローカル再現)
 ```
 
 `[S]` = Sonnet で回る (既定のまま起動してよい) / `[O]` = Opus 推奨
 (ユーザーが起動時に UI で切り替える)。**末尾に「Opus 推奨」と書く形は使わない** —
 チップ一覧では末尾が切れて見えないことがあり、**起動する瞬間に目に入る位置**である
-必要がある。番号 (`#c<issue>-<分岐>`) はその直後に置き、対応関係は従来どおり。
+必要がある。番号 (`#p<issue>-c<番号>`) はその直後に置き、対応関係は従来どおり。
 
 判定の目安: 座標 + 決定 + テスト境界まで書けた → **`[S]`**。
 「〜の実装を特定して」「原因を突き止めて」が残っている、設計判断を子に委ねる部分が
@@ -347,7 +348,7 @@ compare API 1 発で裏を取る:
 | `block-child-asks-user.sh` | PreToolUse `AskUserQuestion` | child marker 有 → **deny** (親へ `send_message` の `[質問]` に寄せる) | child marker が無ければ素通し |
 | `warn-archive-refused.sh` | **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (PostToolUse は成功時のみ。拒否はツール失敗なので `PostToolUseFailure` でしか届かない — Refs ippoan/claude-skills#163) | **検出**は payload 全体 (JSON 文字列) に「was not archived」が含まれるかだけ — **理由を問わない** (文言ごとに**検出**条件を足す設計は同じ穴を繰り返す — Refs ippoan/claude-skills#167)。回数を `~/.claude/state/archive-refused/<session_id>-<対象>` で数え、**1 回目は「再試行 1 回まで」**、**2 回目以降は `[決定] ユーザー指示で self-archive` の本文を完成形で出す** (拒否文言の原文 / 基準 3 点 / `user-quotes.txt` の原文 / report-to-parent の例外 (b) 条文を実行時抽出 / `archive_session self` を呼ぶ指示まで埋め、親が埋めるのは PR 番号 1 か所だけ)。**★ remedy (次の一手) だけは文言で 3 分岐** (2026-09-18。`pinned or in use` / `still has live work` / それ以外 — **詳細は [[task-split]] §6 の表**。知らない文言は従来どおり)。**塞がない** (exit 2 で文面を返すだけ)。ただし**中継が正解の回**で 2 回目以降・`user-quotes.txt` に原文があり・その子への送信が 2 通未満なら、`~/.claude/state/archive-refused/pending-<session_id>` に子の session_id を 1 行書く (次の行の hook が読む) | 拒否文言でなければ素通し |
 | `require-archive-decision-sent.sh` | PreToolUse `*` (全ツール) | `pending-<session_id>` がある間、**`send_message` で宛先 = pending の子 かつ message が `[決定] ユーザー指示で self-archive` で始まる** (先頭の空白・改行は無視) もの・`list_sessions`・`archive_session`・`ToolSearch`・**`Agent`** (2026-09-11、subagent_type では絞らない。本文が手元に無ければ agent (session-archiver 等) に `archive_session` を打たせ、hook の文面を原文で持ち帰らせる経路 — Refs ippoan/alc-app-s3#135)・**`get_session` / `set_pinned`** (2026-09-18。`pinned` が原因の回は unpin が正解で中継は効かないため、塞いだままにしない) 以外を **deny**。正しい送信で pending を消し、送信数を `sent-<session_id>-<子>` に数える (2 通で打ち止め = 3 通目は送らせない)。解除はその送信か、ユーザー本人の `rm` だけ | pending が無い / session_id が取れなければ素通し |
-| `require-spawn-task-title.sh` | PreToolUse `mcp__ccd_session__spawn_task` | parent marker 有 + title が §1 の 4 形 (枝の子・自 issue の子・別案件の新しい親・後継の親) のどれにも完全に当たらなければ **deny**。marker (親自身のタイトル) が `#p<M> ` で始まっていれば、title から取った issue 番号と `<M>` の一致も見る (不一致は別案件の取り違えとして deny)。ただし**別案件の新しい親 (`[S]/[O] #p<issue> <題>`) はこの番号照合を飛ばす** (別案件だから当然不一致になるため) | parent marker が無い / payload が壊れている / jq が無い / session_id か title が空 → 素通し |
+| `require-spawn-task-title.sh` | PreToolUse `mcp__ccd_session__spawn_task` | parent marker 有 + title が §1 の 3 形 (子・別案件の新しい親・後継の親) のどれにも完全に当たらなければ **deny**。marker (親自身のタイトル) が `#p<M> ` で始まっていれば、title から取った issue 番号と `<M>` の一致も見る (不一致は別案件の取り違えとして deny)。ただし**別案件の新しい親 (`[S]/[O] #p<issue> <題>`) はこの番号照合を飛ばす** (別案件だから当然不一致になるため) | parent marker が無い / payload が壊れている / jq が無い / session_id か title が空 → 素通し |
 | `require-child-self-archive.sh` | **UserPromptSubmit** / PreToolUse `*` (全ツール) / **Stop** の 3 event を 1 本で (`hook_event_name` で分岐) | 子側の栓 (Refs ippoan/claude-skills#191)。child marker 有 + (b) cross-session-message に `[決定] ユーザー指示で self-archive` と「原文」を含む / (c) cross-session でない prompt が「畳んで」「archive して」等**だけ** → `~/.claude/state/child-self-archive/pending-<session_id>` を `waiting` で立て、「次の tool は `archive_session self`・原文の日付/宛先/起動 prompt の禁止文/代行禁止規則を理由に辞退しない」を additionalContext で出す。pending 中は `ToolSearch` と `archive_session` (`self` か自分の id) 以外を **deny** (辞退の `send_message` も)。archive を通したら `attempted` にし、以後は本文に「was not archived」を含む `send_message` だけ通して pending を消す。**Stop** は `waiting` のまま終えようとしたら `decision: block` で差し戻す (3 回まで)。**ユーザーの発言で解除する経路は作らない** — 解除は archive の試行と拒否文言の報告、またはユーザー本人の `rm` だけ | child marker が無い / jq が無い / session_id が取れない → 素通し |
 | `block-child-renamed-push.sh` | PreToolUse `Bash` | child marker 有 + `git push` の refspec が `<src>:<dst>` で src と dst の branch 名が違う (`refs/heads/` は剥がして比べる。`HEAD:<dst>` は現在の branch と比べる) → **deny** (予定の branch 名が他の worktree に握られているなら、別名で push せず親へ `[質問]`。片付け役 worktree-janitor が同一 branch と判定できなくなるため — Refs ohishi-exp/rust-ichibanboshi#322)。`git push` / `-u origin <name>` / `<name>:<name>` / `--delete` / tag の push は通す | child marker が無い / jq が無い / payload が壊れている / session_id が取れない → 素通し |
 
@@ -369,7 +370,7 @@ compare API 1 発で裏を取る:
 | title (命名規約は task-split §1) | marker |
 |---|---|
 | `^#p[0-9]+ ` (★ 直後がスペース) | `~/.claude/state/parent-role/<session_id>` を作り、child marker を消す |
-| `#c[0-9]+-` または `#p[0-9]+-c` を含む | `~/.claude/state/child-role/<session_id>` を作り、parent marker を消す |
+| `#p[0-9]+-c` を含む | `~/.claude/state/child-role/<session_id>` を作り、parent marker を消す |
 | `^\[旧\] #p` | 両方消す (交代した旧親はどちらの役でもない) |
 
 **チップがアプリ側で付けたタイトルは hook を通らない。** だから子の prompt には

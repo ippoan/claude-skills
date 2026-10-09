@@ -113,8 +113,12 @@ run "$A" "$(title_payload "$SID" local_xxx '#p134 NFC タイムカード端末�
 check 2 A 'tool_input.session_id が "self" 以外 → 何も作らない' none "$(state_of "$SID")"
 
 reset_markers
+run "$A" "$(title_payload "$SID" self '[S] #p134-c2 doc を直す')" >/dev/null
+check 3 A 'title:"[S] #p134-c2 …" (分岐番号の子) → child marker' child "$(state_of "$SID")"
+
+reset_markers
 run "$A" "$(title_payload "$SID" self '[S] #c134-2 doc を直す')" >/dev/null
-check 3 A 'title:"[S] #c134-2 …" (親と同じ issue の枝) → child marker' child "$(state_of "$SID")"
+check 3a A 'title:"[S] #c134-2 …" (廃止した旧形式の枝の子) → 何も作らない' none "$(state_of "$SID")"
 
 reset_markers
 run "$A" "$(title_payload "$SID" self '[O] #p134-c152 hook を作る')" >/dev/null
@@ -410,42 +414,44 @@ check 103 F '(e) 別 session_id (別セッション。サブエージェント�
   "$(decision "$(run "$F" "$(bash_payload local_other_2 'ls')")")"
 
 echo
-echo "=== G. require-spawn-task-title.sh (PreToolUse spawn_task。title を命名規約 4 形で検査 — Refs ippoan/alc-app-s3#135, ippoan/claude-skills#186) ==="
+echo "=== G. require-spawn-task-title.sh (PreToolUse spawn_task。title を命名規約 3 形で検査 — Refs ippoan/alc-app-s3#135, ippoan/claude-skills#186) ==="
 reset_markers
 check 104 G 'marker 無し + 規約違反 title → 素通し' allow \
   "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p135-c-kiosk-measurements 題')")")"
 
 reset_markers; mk_parent "$SID"
-check 105 G 'parent marker (空) + 枝の子 → 通る' allow \
+check 105 G 'parent marker (空) + 子 (分岐番号) → 通る' allow \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p135-c18 題')")")"
+check 105a G '廃止: 旧形式の枝の子 ([S] #c135-18 題) → deny' deny \
   "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #c135-18 題')")")"
-check 106 G 'parent marker (空) + 自 issue の子 → 通る' allow \
+check 106 G 'parent marker (空) + 子 (子の issue 番号) → 通る' allow \
   "$(decision "$(run "$G" "$(spawn_payload "$SID" '[O] #p874-c987 題')")")"
-check 107 G 'parent marker (空) + 自 issue の子 (さらに分岐番号) → 通る' allow \
+check 107 G 'parent marker (空) + 子 (さらに分岐番号) → 通る' allow \
   "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p874-c987-2 題')")")"
 check 108 G 'parent marker (空) + 後継の親 → 通る' allow \
   "$(decision "$(run "$G" "$(spawn_payload "$SID" '#p135 題')")")"
 
 reset_markers; mk_parent "$SID"
-check 109 G '不正: #c の後が語 (c-kiosk-measurements)' deny \
+check 109 G '不正: c の後が語 (c-kiosk-measurements)' deny \
   "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p135-c-kiosk-measurements 題')")")"
-check 110 G '不正: 分岐番号が数字でない (#c135-x)' deny \
-  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #c135-x 題')")")"
-check 111 G '不正: 題が無い (#c135-18 のみ)' deny \
-  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #c135-18')")")"
-check 112 G '不正: [S]/[O] が無い (#c135-18 題)' deny \
-  "$(decision "$(run "$G" "$(spawn_payload "$SID" '#c135-18 題')")")"
-check 113 G '不正: [S]/[O] 以外の角括弧 ([X] #c135-18 題)' deny \
-  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[X] #c135-18 題')")")"
+check 110 G '不正: 番号が数字でない (#p135-cx)' deny \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p135-cx 題')")")"
+check 111 G '不正: 題が無い (#p135-c18 のみ)' deny \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p135-c18')")")"
+check 112 G '不正: [S]/[O] が無い (#p135-c18 題)' deny \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '#p135-c18 題')")")"
+check 113 G '不正: [S]/[O] 以外の角括弧 ([X] #p135-c18 題)' deny \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[X] #p135-c18 題')")")"
 
 reset_markers; mk_parent_titled "$SID" '#p135 監督'
-check 114 G '親 marker が #p135 監督 + 子 title が #c136-… (issue 番号の取り違え)' deny \
-  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #c136-1 題')")")"
-check 115 G '親 marker が #p135 監督 + 子 title が #c135-… (issue 番号が一致)' allow \
-  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #c135-1 題')")")"
+check 114 G '親 marker が #p135 監督 + 子 title が #p136-c… (issue 番号の取り違え)' deny \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p136-c1 題')")")"
+check 115 G '親 marker が #p135 監督 + 子 title が #p135-c… (issue 番号が一致)' allow \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p135-c1 題')")")"
 
 reset_markers; mk_parent "$SID"
-check 116 G '親 marker が空 (改名前の古い marker 等) + #c136-… → 番号照合は飛ばして通る' allow \
-  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #c136-1 題')")")"
+check 116 G '親 marker が空 (改名前の古い marker 等) + #p136-c… → 番号照合は飛ばして通る' allow \
+  "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p136-c1 題')")")"
 
 reset_markers; mk_child "$SID"
 check 117 G 'child marker だけ (parent marker 無し) + 違反 title → 素通し' allow \
@@ -456,11 +462,11 @@ check 118 G 'payload が壊れている (不正 JSON) → 素通し' allow \
   "$(decision "$(printf '{not json' | bash "$G" 2>/dev/null)")"
 
 echo
-echo "--- G-2. 形4 (別案件の新しい親: [S]/[O] #p<issue> <題>) — 番号照合を飛ばす (Refs ippoan/claude-skills#186) ---"
+echo "--- G-2. 形3 (別案件の新しい親: [S]/[O] #p<issue> <題>) — 番号照合を飛ばす (Refs ippoan/claude-skills#186) ---"
 reset_markers; mk_parent_titled "$SID" '#p310 遠隔点呼の点呼種別の監督'
-check 139 G '形4: [S] #p353 題 → marker が #p310 でも通る (番号照合を飛ばす)' allow \
+check 139 G '形3: [S] #p353 題 → marker が #p310 でも通る (番号照合を飛ばす)' allow \
   "$(decision "$(run "$G" "$(spawn_payload "$SID" '[S] #p353 題')")")"
-check 140 G '形4: [O] #p353 題 → 通る' allow \
+check 140 G '形3: [O] #p353 題 → 通る' allow \
   "$(decision "$(run "$G" "$(spawn_payload "$SID" '[O] #p353 題')")")"
 check 141 G '形3 (接頭辞なし): #p353 題 → marker が #p310 なら番号照合で deny (後継の親は従来どおり)' deny \
   "$(decision "$(run "$G" "$(spawn_payload "$SID" '#p353 題')")")"
