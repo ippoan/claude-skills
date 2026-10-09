@@ -64,7 +64,7 @@ CCoW では **GitHub issue が唯一機能する引き継ぎ手段**。handoff.m
 
 1. 旧親が後継チップを起票する (prompt に下の 4 点を義務として書く)
 2. **後継は起動したら、まず名前を入れ替える。順序厳守**
-   ([[task-split]] の命名規約 — 親は `#p<issue>`、子は `#c<issue>-<番号>`):
+   ([[task-split]] の命名規約 — 親は `#p<issue>`、子は `#p<issue>-c<番号>`):
    1. **旧親**を `set_session_title` で `[旧] #p<issue> <短い題>` へ改名
    2. **続けて自分**を `set_session_title { session_id: "self" }` で
       `#p<issue> <短い題>` へ改名
@@ -151,9 +151,9 @@ CCoW では **GitHub issue が唯一機能する引き継ぎ手段**。handoff.m
 
 | 子 | 状態 | 親がやること |
 |---|---|---|
-| `[S] #c874-12 …` | push 済み・PR 未作成 | PR を作る → マージ確認 → **archive を打つ** |
-| `[O] #c874-13 …` | 走行中 | [質問] に答える → 完了後 PR → **archive を打つ** |
-| `[S] #c874-11 …` | マージ済み・**未 archive** | **archive を打つだけ** |
+| `[S] #p874-c12 …` | push 済み・PR 未作成 | PR を作る → マージ確認 → **archive を打つ** |
+| `[O] #p874-c13 …` | 走行中 | [質問] に答える → 完了後 PR → **archive を打つ** |
+| `[S] #p874-c11 …` | マージ済み・**未 archive** | **archive を打つだけ** |
 
 「マージ済み・未 archive」の行を落とさないこと — **一番忘れられやすく、
 一番簡単に片付く**。旧親は自分が畳む前に `list_sessions` で洗い出して書く。
