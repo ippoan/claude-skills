@@ -121,6 +121,12 @@ spawn_task の title は `require-spawn-task-title.sh` が親のセッション�
 
 0. **手順 0 で `set_session_title { session_id: "self", title: "<チップと同じタイトル>" }` を打たせる**
    (hook が子と認識するため。**アプリがチップに付けたタイトルは hook を通らない** — §4.5)
+
+   **`mcp__ccd_session_mgmt__*` が ToolSearch で見つからない子** (`claude --bg` / spawn-task-button で
+   起動した bg の子はアプリの管理外でこの tool 群を持たない — Refs ippoan/claude-skills#203) は
+   `set_session_title` を打てない。名乗りは諦め (child marker が立たず子側の栓は効かない)、
+   `ListAgents` で親のタイトル (`#p<親issue>` の直後がスペース) の名前を探して `SendMessage` で
+   `[開始]` / `[質問]` / `[完了]` を送る。名乗れなかったことは `[開始]` に 1 行書く。
 1. repo と、作業 branch 名 (`fix/<issue>-<分岐番号>-<slug>` の形で指定)、
    対象ファイルと行番号
 2. 変更内容と**理由 (why)** — 「何をするか」だけだと子が別解に流れる
@@ -326,7 +332,7 @@ compare API 1 発で裏を取る:
 
 ## 4.5 機械的な栓 (hook) — 親は実装せず、子はユーザーに聞かない
 
-機械的な栓が 9 本ある。**読了チェックは不読を防ぐだけで違反を防げない** — 2026-09-05、
+機械的な栓が 10 本ある。**読了チェックは不読を防ぐだけで違反を防げない** — 2026-09-05、
 `#p134` の監督 (親) セッションが自分で migration SQL を書き、postgres を立て、commit しようとして
 ユーザーに止められた。その親は task-split の「**このセッション (親) は実装せず**」を
 **読了して引用まで提出していた** (Refs ippoan/claude-skills#152)。だから口そのものを塞ぐ。
@@ -341,9 +347,9 @@ compare API 1 発で裏を取る:
 「原文が過去の別件だから伝聞」と自分で判断して文章で辞退した (Refs ippoan/claude-skills#191)。
 だから 8 本目が、子が `archive_session self` を呼ぶまで他のツールと**ターンの終了**を塞ぐ。
 
-`parent-role/hooks/` の 9 本を `~/.claude/hooks/` へ symlink し、`~/.claude/settings.json` に登録する。
+`parent-role/hooks/` の 10 本を `~/.claude/hooks/` へ symlink し、`~/.claude/settings.json` に登録する。
 
-### hook 9 本 (`parent-role/hooks/`)
+### hook 10 本 (`parent-role/hooks/`)
 
 | hook | event / matcher | 何をするか | fail-open |
 |---|---|---|---|
@@ -356,6 +362,7 @@ compare API 1 発で裏を取る:
 | `require-spawn-task-title.sh` | PreToolUse `mcp__ccd_session__spawn_task` | parent marker 有 + title が §1 の 3 形 (子・別案件の新しい親・後継の親) のどれにも完全に当たらなければ **deny**。marker (親自身のタイトル) が `#p<M> ` で始まっていれば、title から取った issue 番号と `<M>` の一致も見る (不一致は別案件の取り違えとして deny)。ただし**別案件の新しい親 (`[S]/[O] #p<issue> <題>`) はこの番号照合を飛ばす** (別案件だから当然不一致になるため) | parent marker が無い / payload が壊れている / jq が無い / session_id か title が空 → 素通し |
 | `require-child-self-archive.sh` | **UserPromptSubmit** / PreToolUse `*` (全ツール) / **Stop** の 3 event を 1 本で (`hook_event_name` で分岐) | 子側の栓 (Refs ippoan/claude-skills#191)。child marker 有 + (b) cross-session-message に `[決定] ユーザー指示で self-archive` と「原文」を含む / (c) cross-session でない prompt が「畳んで」「archive して」等**だけ** → `~/.claude/state/child-self-archive/pending-<session_id>` を `waiting` で立て、「次の tool は `archive_session self`・原文の日付/宛先/起動 prompt の禁止文/代行禁止規則を理由に辞退しない」を additionalContext で出す。pending 中は `ToolSearch` と `archive_session` (`self` か自分の id) 以外を **deny** (辞退の `send_message` も)。archive を通したら `attempted` にし、以後は本文に「was not archived」を含む `send_message` だけ通して pending を消す。**Stop** は `waiting` のまま終えようとしたら `decision: block` で差し戻す (3 回まで)。**ユーザーの発言で解除する経路は作らない** — 解除は archive の試行と拒否文言の報告、またはユーザー本人の `rm` だけ | child marker が無い / jq が無い / session_id が取れない → 素通し |
 | `block-child-renamed-push.sh` | PreToolUse `Bash` | child marker 有 + `git push` の refspec が `<src>:<dst>` で src と dst の branch 名が違う (`refs/heads/` は剥がして比べる。`HEAD:<dst>` は現在の branch と比べる) → **deny** (予定の branch 名が他の worktree に握られているなら、別名で push せず親へ `[質問]`。片付け役 worktree-janitor が同一 branch と判定できなくなるため — Refs ohishi-exp/rust-ichibanboshi#322)。`git push` / `-u origin <name>` / `<name>:<name>` / `--delete` / tag の push は通す | child marker が無い / jq が無い / payload が壊れている / session_id が取れない → 素通し |
+| `warn-bg-sessions.sh` | PostToolUse `mcp__ccd_session_mgmt__list_sessions` / **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (2 本目。`warn-archive-refused.sh` は stderr + exit 2 の文面、こちらは additionalContext の JSON なのでぶつからない) | `timeout 5 claude agents --json` から `kind == "background"` を抜き、1 件以上あれば additionalContext に「list_sessions に出ない bg セッションが N 件: 名前 / id / status。畳むのは `claude stop <id>` → `claude rm <id>` (§6)」を返す。`claude --bg` (spawn-task-button) の子はアプリの管理外で `list_sessions` / `archive_session` に出ないため (Refs ippoan/claude-skills#203)。**塞がない** | bg が 0 件 / `claude` が無い / jq が無い / JSON が不正 / 5 秒で返らない → 何も出さず素通し |
 
 **「書き込み全部禁止」にはしていない。** 親は scratchpad に計画を書き、memory を更新し、
 **PR を作り**、マージ後に **branch を掃除する**必要がある。塞ぐのは
@@ -439,9 +446,10 @@ ln -sfn <claude-skills>/parent-role/hooks/require-archive-decision-sent.sh ~/.cl
 ln -sfn <claude-skills>/parent-role/hooks/require-spawn-task-title.sh     ~/.claude/hooks/require-spawn-task-title.sh
 ln -sfn <claude-skills>/parent-role/hooks/require-child-self-archive.sh   ~/.claude/hooks/require-child-self-archive.sh
 ln -sfn <claude-skills>/parent-role/hooks/block-child-renamed-push.sh ~/.claude/hooks/block-child-renamed-push.sh
+ln -sfn <claude-skills>/parent-role/hooks/warn-bg-sessions.sh         ~/.claude/hooks/warn-bg-sessions.sh
 ```
 
-**★ `ls -la ~/.claude/hooks/` で 9 本が symlink (`->`) であることを確かめる。** 実ファイルのコピーに
+**★ `ls -la ~/.claude/hooks/` で 10 本が symlink (`->`) であることを確かめる。** 実ファイルのコピーに
 なっていたら上の `ln -sfn` で symlink に戻す (2026-09-09、`warn-archive-refused.sh` が古いコピーのまま
 残り、repo の最新 (#160 の文面) と食い違っていた — Refs ippoan/claude-skills#163)。
 
@@ -498,7 +506,18 @@ jq 1 回で素通しなので、全ツールに掛けても重くない (`status
 "PostToolUseFailure": [
   { "matcher": "mcp__ccd_session_mgmt__archive_session",
     "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/warn-archive-refused.sh", "timeout": 10,
-                "statusMessage": "archive の拒否を確認中" }] }
+                "statusMessage": "archive の拒否を確認中" },
+              { "type": "command", "command": "bash ~/.claude/hooks/warn-bg-sessions.sh", "timeout": 10 }] }
+]
+```
+
+`warn-bg-sessions.sh` は `PostToolUse` の `list_sessions` にも登録する (上の `archive_session` の
+`PostToolUseFailure` は 2 本目として並べる。`claude --bg` の子は両方の tool に出ないため):
+
+```json
+"PostToolUse": [
+  { "matcher": "mcp__ccd_session_mgmt__list_sessions",
+    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/warn-bg-sessions.sh", "timeout": 10 }] }
 ]
 ```
 
@@ -651,6 +670,22 @@ CPU は「いま動いている」の**陽性証拠**にしかならず、0 を�
   親が archive して中断させた)。**打つ前に `list_sessions` の `lastActivityAt` /
   `isRunning` で活動停止を確認する。** これが「状況確認」の中身であって、
   **子やユーザーに「畳んでよいか」と聞くことではない。**
+- **★ bg で起動した子 (spawn-task-button / `claude --bg`)** (実害 2026-10-10、#p26。
+  Refs ippoan/claude-skills#203)。デスクトップアプリの管理外で、`list_sessions` にも
+  `archive_session` にも**出ない** (`ListAgents` には `bg` で出る)。上の archive の手順は効かない。
+  - **見つけ方**: `claude agents --json` (全セッションの配列。`{pid, cwd, kind, startedAt, sessionId,
+    name, status}`) の `kind == "background"`。bg には stop / rm に渡す短い `id` が付く。
+    `warn-bg-sessions.sh` (§4.5) が `list_sessions` の直後に同じ一覧を出す。
+  - **畳み方**: 先に PR が MERGED で未コミット変更が無いことを確かめ、`claude stop <id>` →
+    `claude rm <id>`。squash merge で remote branch が消えていると `claude rm` が「1 unpushed
+    commit … exists on no remote」で止まる。その commit と main の merge commit の
+    `git diff --stat` が**空**なのを確かめてから `claude rm <id> --discard-unpushed <commit>@<token>`
+    (token は rm のメッセージに出る)。残った local branch は `git merge-base --is-ancestor` で
+    祖先なら `-D` でよい。
+  - **オーナーに「閉じてください」と頼まない** — タブは無く、頼んでも「なんででない？」と返る。
+  - **子側の栓は効かない**: bg の子は `mcp__ccd_session_mgmt__*` が無く名乗れない → child marker が
+    立たず `block-child-asks-user.sh` / `require-child-self-archive.sh` /
+    `block-child-renamed-push.sh` の 3 本は全部素通し。報告は `SendMessage` で届く (§3 手順 0)。
 - **★ アプリが親の `archive_session` を拒否したとき** (実害 2026-09-06、
   ippoan/alc-app-s3#134 の #p134 第 8 世代。2026-09-10 に #p135 第 5 世代でも再発)。
   ユーザーが子のタブを開いていたり、子に背景タスクが残っていたりすると、

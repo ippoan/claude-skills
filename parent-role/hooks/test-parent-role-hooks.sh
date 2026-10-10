@@ -13,6 +13,7 @@ D="${HERE}/block-child-asks-user.sh"
 E="${HERE}/warn-archive-refused.sh"
 G="${HERE}/require-spawn-task-title.sh"
 J="${HERE}/block-child-renamed-push.sh"
+K="${HERE}/warn-bg-sessions.sh"
 
 SANDBOX=$(mktemp -d /tmp/parent-role-hooks-test.XXXXXX)
 trap 'rm -rf "$SANDBOX"' EXIT
@@ -685,6 +686,51 @@ nojq=$(printf '%s' "$(bash_payload "$SID" 'git push origin feat-2:feat')" | PATH
 check 192 J 'jq が無い → 素通し (出力なし・exit 0)' 'rc=0' "$nojq"
 d=$(run "$J" "$(bash_payload "$SID" 'git push origin feat-2:feat')")
 check 193 J 'deny 文言に [質問] の案内が入る' yes "$(has "$d" '[質問]')"
+reset_markers
+
+echo "=== K. warn-bg-sessions.sh (PostToolUse list_sessions / PostToolUseFailure archive_session。bg の子を畳み方つきで知らせる。塞がない — Refs #203) ==="
+FAKEBIN="${SANDBOX}/fake-claude-bin"; mkdir -p "$FAKEBIN"
+# claude の代わりに、環境変数 FAKE_CLAUDE_OUT をそのまま返す偽物
+cat > "${FAKEBIN}/claude" <<'FAKE'
+#!/bin/bash
+[ "${1:-}" = agents ] && [ "${2:-}" = --json ] || exit 2
+printf '%s' "${FAKE_CLAUDE_OUT:-}"
+FAKE
+chmod +x "${FAKEBIN}/claude"
+NOCLAUDE_PATH="${SANDBOX}/noclaude-bin"; mkdir -p "$NOCLAUDE_PATH"
+for t in jq timeout cat; do ln -sf "$(command -v "$t")" "${NOCLAUDE_PATH}/$t"; done
+bg_payload() { jq -nc --arg e "$1" '{session_id:"local_self_1",hook_event_name:$e,tool_name:"mcp__ccd_session_mgmt__list_sessions",tool_input:{}}'; }
+run_bg() { # <FAKE_CLAUDE_OUT> <event>
+  printf '%s' "$(bg_payload "$2")" | PATH="${FAKEBIN}:$PATH" FAKE_CLAUDE_OUT="$1" bash "$K" 2>/dev/null
+}
+BG0='[{"pid":1,"cwd":"/x","kind":"interactive","startedAt":"t","sessionId":"s1","name":"[S] #p1-c1 例","status":"busy"}]'
+BG2='[{"pid":1,"cwd":"/x","kind":"interactive","sessionId":"s1","name":"親","status":"busy"},{"pid":2,"cwd":"/x","kind":"background","sessionId":"s2","id":"ab12cd","name":"[S] #p1-c2 例","status":"idle"},{"pid":3,"cwd":"/x","kind":"background","sessionId":"s3","id":"ef34gh","name":"[O] #p1-c3 例","status":"busy"}]'
+o=$(run_bg "$BG0" PostToolUse)
+check 194 K 'bg 0 件 (interactive のみ) → 出力なし' "" "$o"
+o=$(run_bg '[]' PostToolUse)
+check 195 K '空配列 → 出力なし' "" "$o"
+o=$(run_bg "$BG2" PostToolUse)
+check 196 K 'bg 2 件 → 件数 2' yes "$(has "$o" '2 件')"
+check 197 K 'bg 2 件 → 名前 (1 本目)' yes "$(has "$o" '[S] #p1-c2 例')"
+check 198 K 'bg 2 件 → id (2 本目)' yes "$(has "$o" 'ef34gh')"
+check 199 K 'bg 2 件 → status' yes "$(has "$o" 'idle')"
+check 200 K 'bg 2 件 → claude stop / claude rm の案内' yes \
+  "$([ "$(has "$o" 'claude stop <id>')" = yes ] && [ "$(has "$o" 'claude rm <id>')" = yes ] && echo yes || echo no)"
+check 201 K 'interactive は数えない (親の名前が出ない)' no "$(has "$o" '- 親 /')"
+check 202 K '出力は additionalContext の JSON (PostToolUse)' PostToolUse \
+  "$(printf '%s' "$o" | jq -r '.hookSpecificOutput.hookEventName' 2>/dev/null)"
+check 203 K '塞がない (permissionDecision を出さない)' no "$(has "$o" 'permissionDecision')"
+o=$(run_bg "$BG2" PostToolUseFailure)
+check 204 K 'PostToolUseFailure でも additionalContext で返す' PostToolUseFailure \
+  "$(printf '%s' "$o" | jq -r '.hookSpecificOutput.hookEventName' 2>/dev/null)"
+o=$(printf '%s' "$(bg_payload PostToolUse)" | PATH="$NOCLAUDE_PATH" "$(command -v bash)" "$K" 2>/dev/null; echo "rc=$?")
+check 205 K 'claude が無い → 出力なし・exit 0' 'rc=0' "$o"
+o=$(run_bg 'not json' PostToolUse)
+check 206 K 'JSON 不正 → 出力なし' "" "$o"
+o=$(run_bg '{"kind":"background"}' PostToolUse)
+check 207 K '配列でない JSON → 出力なし' "" "$o"
+o=$(printf '%s' "$(bg_payload PostToolUse)" | PATH="$NOJQ_PATH" "$(command -v bash)" "$K" 2>/dev/null; echo "rc=$?")
+check 208 K 'jq が無い → 出力なし・exit 0' 'rc=0' "$o"
 reset_markers
 
 echo
