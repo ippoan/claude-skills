@@ -200,6 +200,7 @@ agent 側はパスが `handoff/` 配下の `ledger-*.md` か・git 作業ツリ�
 
 ```bash
 ln -sfn <claude-skills>/.claude/agents/ledger-keeper.md ~/.claude/agents/ledger-keeper.md
+ln -sfn <claude-skills>/.claude/agents/wrangler-editor.md ~/.claude/agents/wrangler-editor.md
 ```
 
 ## 4. ループの回し方 — **`sleep` で待たない**
