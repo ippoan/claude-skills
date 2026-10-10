@@ -101,6 +101,11 @@ commit に Opus の署名が付いた。原文は
 `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`。Refs ohishi-exp/nuxt-dtako-admin#1133)。
 [[task-split]] §3 と対 — **片方だけ直さないこと**。
 
+**起動 prompt が「branch の作成・commit・push は `wrangler-editor` で」と指示していたら、
+自分では打たずに agent を 1 回呼ぶ。** agent が拒否文言を返したら打ち直さず、出力をそのまま
+親へ `[質問]` する ([[task-split]] §3 と対 — **片方だけ直さないこと**。
+Refs ohishi-exp/rust-ichibanboshi#322)。
+
 ## ★★ 指示に `origin/main` の SHA があったら、動く前に突き合わせる
 
 親は**指示を書いた時点の `origin/main` の SHA** を 1 行入れてくることがある

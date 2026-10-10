@@ -134,6 +134,11 @@ spawn_task の title は `require-spawn-task-title.sh` が親のセッション�
    実際に commit を書くモデルと食い違う (2026-10-01: 「Opus 5.5」と直書きした子 4 本のうち 3 本が、
    Sonnet へ切り替わった後も Opus の署名で計 7 回 commit した。Refs ohishi-exp/nuxt-dtako-admin#1133)。
    子側の受け方は [[report-to-parent]] にある — **片方だけ直さないこと**。
+   **子に branch の作成・commit・push をさせるタスクでは、起動 prompt の時点で
+   「自分では打たず、最初から `wrangler-editor` で行う」と書く。** 拒否された後から agent を
+   持ち出すと、子は「拒否された操作の別経路での打ち直し」として断る (2026-10-09、#p322-c31 で
+   実際に断った。起票し直した c31-2 は最初から agent を使い 1 回で通った。
+   Refs ohishi-exp/rust-ichibanboshi#322)。
 
 4.5 **★ 実機確認の「いつ・誰が・どこで」を prompt に書く (2026-08-22、オーナー指示)。**
    **チップを作る前に親が決めること。** 書かないと子が終わり際に dev を立てようとし、
