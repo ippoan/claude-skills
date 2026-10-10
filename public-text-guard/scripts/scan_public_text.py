@@ -15,6 +15,14 @@ CLI:
 ただし除外は必要最小限に留める。**公開 repo ではポインタは値と同じ**なので、
 `https://…/devices/<UUID>/…` のような URL 中の識別子は当て続ける (`_is_path_uuid` を参照)。
 
+例外が 1 つある: wrangler.toml の `service_id = "<UUID>"` (VPC Service) と
+`database_id = "<UUID>"` (D1) の行は当てない (`_is_wrangler_binding_id`)。これらは Cloudflare の
+binding の資源 ID で、**資格情報ではなく、アカウントの権限が無ければ使えない**うえ、
+一番星の Worker の wrangler.toml で既に公開されている。除外は行全体がこの形のときだけで、
+key が別 (`id` / `store_id` / `token` 等)・URL 中・散文中・JSON・行末コメント付きは当て続ける。
+このスキャナは PreToolUse hook (PR・issue 本文) と PermissionDenied hook も共有するので、
+本文中に書かれた同じ形の行にも効く。
+
 内部ホスト名のような **repo に書けない語** はここに書かず、
 `~/.claude/state/public-text-guard/denylist` (1 行 1 語) から読む。
 """
@@ -62,6 +70,13 @@ FS_PATH_START_RE = re.compile(r"\A(?:/|~/|\./|\.\./|[A-Za-z]:[\\/])")
 # `SP=/tmp/…` `--body-file=/tmp/…` の左辺。パスの一部ではないので剥がす。
 ASSIGNMENT_PREFIX_RE = re.compile(r"\A[-A-Za-z0-9_]+=")
 _QUOTE_CHARS = "\"'`"
+# _is_wrangler_binding_id 用。行全体が TOML の `key = "<UUID>"` で key が許可リストの 2 つだけ。
+# 裸の `id` は入れない (PR 本文に `id = "<本番の識別子>"` と 1 行書くだけで素通しする穴になる)。
+WRANGLER_BINDING_ID_RE = re.compile(
+    r'(?:service_id|database_id)\s*=\s*"'
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+    r'"'
+)
 
 
 def _is_placeholder_uuid(match: str) -> bool:
@@ -101,6 +116,20 @@ def _is_path_uuid(line: str, span: tuple[int, int]) -> bool:
     if prefix:
         word = word[prefix.end():].lstrip(_QUOTE_CHARS)
     return bool(FS_PATH_START_RE.match(word))
+
+
+def _is_wrangler_binding_id(line: str, span: tuple[int, int]) -> bool:
+    """wrangler.toml の `service_id = "<UUID>"` / `database_id = "<UUID>"` 行の UUID を除外する。
+
+    Cloudflare の binding の資源 ID (VPC Service・D1) は資格情報ではなく、アカウントの権限が
+    無ければ使えない。真になるのは**行全体**が `key = "<UUID>"` (値は UUID 1 つ・行末コメントなし)
+    で、key が `service_id` か `database_id` のときだけ。行頭の空白と diff の追加行の `+` は
+    剥がしてから見る。`span` は呼び出し側と形を揃えるための引数 (行全体の一致なので使わない)。
+    """
+    text = line.strip()
+    if text.startswith("+"):
+        text = text[1:].lstrip()
+    return bool(WRANGLER_BINDING_ID_RE.fullmatch(text))
 
 
 def _is_device_credential(token: str) -> bool:
@@ -188,8 +217,9 @@ def _scan_variant(line: str, denylist: list[str]) -> list[tuple[str, str]]:
         return True
 
     for m in UUID_RE.finditer(line):
-        if _is_placeholder_uuid(m.group(0)) or _is_path_uuid(line, m.span()):
-            _claim(m.span())  # 見本もパスも占有はする (device 風で拾い直さないため)
+        if (_is_placeholder_uuid(m.group(0)) or _is_path_uuid(line, m.span())
+                or _is_wrangler_binding_id(line, m.span())):
+            _claim(m.span())  # 見本もパスも binding ID も占有はする (device 風で拾い直さないため)
             continue
         if _claim(m.span()):
             findings.append(("uuid", m.group(0)))

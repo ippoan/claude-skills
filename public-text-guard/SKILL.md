@@ -33,7 +33,7 @@ public-text-guard/
   scripts/resolve_body_file.py          ← --body-file のパス解決。2 hook が共有
   hooks/pretool-public-text-guard.py    ← PreToolUse / matcher: Bash
   hooks/permission-denied-scan.py       ← PermissionDenied / matcher: *
-  tests/run_tests.py                    ← 23 ケース。HOME と gh を差し替えて回す
+  tests/run_tests.py                    ← 26 ケース。HOME と gh を差し替えて回す
 ```
 
 **スキャナは 1 本。** 2 つの hook がどちらもこれを import する。
@@ -97,6 +97,11 @@ public-text-guard/
   **`/` を含むだけでは除外しない** — 公開 repo では**ポインタは値と同じ**なので、
   `https://…/devices/<UUID>/status` / `s3://bucket/<UUID>/…` / 散文中の
   `devices/<UUID>/status` は**まさに止めたい形**。ここを広げると取りこぼす (test 23)
+- **wrangler.toml の `service_id = "<UUID>"` / `database_id = "<UUID>"` 行** — Cloudflare の
+  binding の資源 ID (VPC Service・D1) は資格情報ではなく、アカウントの権限が無ければ使えない。
+  **行全体がこの形** (値は UUID 1 つ・行末コメントなし) のときだけ外す。裸の `id` / `store_id` /
+  `token` 等・URL 中・散文・JSON は当て続ける。スキャナは PR / issue 本文の検査も共有するので、
+  本文に書いた同じ形の行にも効く。`wrangler.jsonc` の `"service_id": "…"` は外れない (test 26)
 - **英単語・kebab-case の識別子** — `internationalization` や `public-text-guard-hook` は
   「大文字・小文字・数字を全部含む」条件で落ちる
 
@@ -218,7 +223,7 @@ python3 public-text-guard/tests/run_tests.py
 ```
 
 `HOME` を一時ディレクトリへ、`gh` を stub へ差し替えて回すので、
-**`~/.claude/state/` の実物にも本物の GitHub にも触らない**。23 ケース全 PASS で exit 0。
+**`~/.claude/state/` の実物にも本物の GitHub にも触らない**。26 ケース全 PASS で exit 0。
 1〜11 は issue #153 の受け入れ条件そのもの、12〜13 はすり抜けの回帰防止、
 14〜23 は #157 の誤爆 2 経路と、そこを直しても緩めてはいけない 8 点 (取りこぼし側も含む)。
 

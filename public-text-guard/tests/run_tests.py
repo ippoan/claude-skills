@@ -455,6 +455,40 @@ def case_25(sb):
         claim in msg("other_hit"), "検出されませんでした" in msg("cu_miss"))
 
 
+def case_26(sb):
+    """26 | scan | wrangler の `service_id` / `database_id` の TOML 行だけ当てず、それ以外は当て続ける"""
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    from scan_public_text import scan  # noqa: PLC0415
+    u = SAMPLE_UUID
+    expected = [
+        ('service_id = "%s"' % u, False),
+        ('database_id = "%s"' % u, False),
+        ('  service_id = "%s"' % u, False),           # 字下げ
+        ('+service_id = "%s"' % u, False),            # diff の追加行
+        ('id = "%s"' % u, True),                      # 裸の id は許可リスト外
+        ('store_id = "%s"' % u, True),
+        ('tenant_id = "%s"' % u, True),
+        ('device_id = "%s"' % u, True),
+        ('token = "%s"' % u, True),
+        ('service_id: %s' % u, True),                 # TOML の形でない
+        ('"service_id": "%s"' % u, True),             # JSON (wrangler.jsonc) は範囲外
+        ('https://example.invalid/services/%s' % u, True),
+        ('service_id は %s' % u, True),                # 散文
+        ('service_id = "%s" # %s' % (u, PATH_UUID), True),    # 行末コメント付きは両方当たる
+    ]
+    results = []
+    for text, want_hit in expected:
+        hits = [f for f in scan(text, denylist=[]) if f[1] == "uuid"]
+        results.append((text, want_hit, len(hits)))
+    ok = all((n > 0) == want for _, want, n in results)
+    # 行末コメント付きは UUID が 2 つとも当たる (除外は行全体の一致のときだけ)
+    both = {f[2] for f in scan(expected[-1][0], denylist=[]) if f[1] == "uuid"}
+    ok = ok and both == {u, PATH_UUID}
+    return ok, " / ".join(
+        "%s%s" % ("OK" if (n > 0) == want else "NG:", text.replace(u, "<U>")[:40])
+        for text, want, n in results)
+
+
 # 1〜11 は issue #153 の受け入れ条件そのもの。12〜13 は実装中に見つけた
 # すり抜け (フラグ解析だけに頼ると素通しした) の回帰防止。
 # 14〜23 は issue #157: 作業パスの UUID による誤爆 2 経路 (14/15) と、
@@ -462,11 +496,12 @@ def case_25(sb):
 # 17 fail-closed / 18 検出力 / 19 スキャナ単体 / 21・22 本文の外もコマンド全文で見る /
 # 23 除外は FS の絶対パスだけで URL は当てる)。
 # **21・22 が「コマンド全文の走査を弱めるな」、23 が「除外を広げるな」の見張り番**。
+# 26 は wrangler の binding 資源 ID (`service_id` / `database_id` の TOML 行だけ) の除外と、その外側。
 CASES = [case_01, case_02, case_03, case_04, case_05, case_06,
          case_07, case_08, case_09, case_10, case_11,
          case_12, case_13,
          case_14, case_15, case_16, case_17, case_18, case_19, case_20,
-         case_21, case_22, case_23, case_24, case_25]
+         case_21, case_22, case_23, case_24, case_25, case_26]
 
 
 def main() -> int:
