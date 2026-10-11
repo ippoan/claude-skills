@@ -216,7 +216,7 @@ curl -s "http://ohishi-data:3100/api/kintai/day-summaries?month=2026-06"
 
 **⇒ 「GCP が何を見てその数字を出したか」は現状わからない。** 両側の集計値が食い違う原因を
 最後まで詰めるには、**`rust-ichibanboshi` に診断用の口を足すしかない**
-(**ファイル名を `kintai` / `kosoku` で始めないこと** — `logic_version` が変わる。§5 参照)。
+(ファイル名・ソースを触っても勤怠の版 `logic_version` は変わらない (etag は変わる)。§5 参照)。
 
 **★ `get_restraint_summary` を GCP のライブ値と混同しないこと。** これは**給与比較アーカイブ**で、
 
@@ -881,16 +881,18 @@ $dd_dr = $this->TimeCardDtako->DtakoRows->find()->where(['id' => $id])
   適用 `make kintai-migrate` / 検証 `make kintai-rls-verify`。
   **新表の migration には `GRANT` を書く** (`GRANT ON ALL TABLES` は既存表だけのスナップショット。
   書き忘れて本番 502 になった。pg テストは所有者で繋ぐので権限を通りません)
-- **★ `src/kosoku*` / `src/kintai*` / `src/routes/kintai*` を触ると `logic_version` が変わり、
-  deploy で全乗務員が stale になります。** 収束に `run_kintai_recalc` を 3 ページ回す必要が
-  出るので、触るファイル数は最小に。
-  **`build.rs` の `KINTAI_OUTPUT_GLOBS` は `(ディレクトリ, ファイル名の接頭辞)`** で
-  `("src","kosoku") / ("src","kintai") / ("src/routes","kintai")` の 3 つ。
-  ⇒ **診断用の新しい口を足すときは `kintai`/`kosoku` で始まらない名前**
-  (例 `src/routes/dtako_day.rs`) にすれば `logic_version` は動きません。
-  抜け道ではなく正しい分類です — glob の目的は
-  「`/api/kintai/{daily,kosoku-daily,version}` の**応答を形づくる**コード」なので。
-  **既存ファイルを glob の外へ動かすのは `KINTAI_OUTPUT_REQUIRED` で落ちます**
+- **★ 勤怠の版 `logic_version` は、共有 crate の定数 `LOGIC_BASE` と TOML (KosokuParams) だけで
+  決まります。** ファイル名やソースを触っても版は変わらず、deploy で全乗務員が stale に
+  なることも畳み直しも要りません。
+  **計算結果を変える変更では `LOGIC_BASE` を上げ**、`KINTAI_GOLDEN_APPEND=1` で golden の表
+  (`workers/kintai/kosoku/tests/golden/logic_outputs.tsv`) に 1 行足す →
+  merge 後に `run_kintai_recalc` で畳み直す。上げ忘れは golden テスト
+  (`workers/kintai/kosoku/tests/logic_golden.rs`) が CI で落とす。
+  **ただし固定入力が通らない分岐は検知できない**ので、分岐を足したら入力も足すこと。
+  **ソースのハッシュ (`build.rs` の `KINTAI_OUTPUT_GLOBS` の glob、
+  `(ディレクトリ, ファイル名の接頭辞)`) は HTTP の etag (`/api/kintai/version`) と記録用の
+  `code_sha` にだけ効きます。** glob の外に置くと etag が動かない、という意味でだけ残り、
+  既存ファイルを glob の外へ動かすのは `KINTAI_OUTPUT_REQUIRED` で落ちます (etag 用の検査)
 - **ローカルで全体テストや `make cov-check` を回さないでください** (時間が溶けます)。
   **`cargo fmt --all` だけかけて push**。CI が postgres service 込みで回します
 - `src/kintai_day_summaries.rs` が pg 無しで 57% に見えるのは**回帰ではありません**
