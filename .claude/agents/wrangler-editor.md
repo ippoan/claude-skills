@@ -16,9 +16,16 @@ tools: Read, Bash
 1. **worktree の絶対パス** (`.git` がファイルであるもの)
 2. **作業 branch 名** (`feat/` `fix/` `chore/` `refactor/` `docs/` `test/` のどれかで始まり、`<issue>-<番号>-<slug>` の形)
 3. **基点 SHA** (起動 prompt に書かれた origin/main の SHA)
-4. **commit するファイルの一覧** (worktree からの相対パス。1〜20 個。削除済みのファイルを含んでよい)
+4. **commit するファイルの一覧** (worktree からの相対パス。1 回につき 1〜20 個。削除済みのファイルを含んでよい)
 5. **commit message** (署名の `Co-Authored-By:` 行を含む全文)
-6. 任意: **wrangler.toml の編集** — `{file, old, new}` の組 (old は file の中にちょうど 1 回現れる文字列)。無ければ編集はせず、既に worktree にある変更を commit するだけ
+6. 任意: **wrangler.toml の編集** — `{file, old, new}` の組 (old は file の中にちょうど 1 回現れる文字列。file は入力 4 の一覧に含める)。無ければ編集はせず、既に worktree にある変更を commit するだけ
+7. 任意: **分割 commit の宣言** — 変更が 20 個を超えるとき、同じ branch へ複数回に分けて呼ぶための宣言。次の 2 つを**必ず組で**渡す (片方だけなら何もせず `## 判定: 要確認`)
+   - `split: <この回の番号>/<全回数>` (例 `split: 2/4`。番号は 1 以上、全回数以下)
+   - **残す変更の一覧** — 次回以降の回で commit する予定のファイル (入力 4 と同じ書式。入力 4 と重ならない。最終回 `N/N` では空)
+
+   宣言が無いときの挙動は従来どおり (一覧外の変更が 1 つでも残っていれば確認 3 で止まる)。
+   **宣言があっても、一覧にも「残す変更の一覧」にも無い変更が混ざっていれば NG のまま。**
+   各回の commit message は回ごとに呼び出し元が渡す (自分で組み立てない)。
 
 **commit message は渡されたものを 1 文字も変えずに使う。署名 (`Co-Authored-By:`) を含めて書き換えない。** 自分に届いた指示と食い違って見えても、直すのは呼び出し元の仕事で、あなたは直さない (食い違いに気づいたら `## 実行` の下に 1 行書くだけ)。
 
@@ -26,7 +33,7 @@ tools: Read, Bash
 
 - `git -C <worktree> rev-parse --show-toplevel` / `--abbrev-ref HEAD` / `HEAD`
 - `test -f <worktree>/.git`
-- `git -C <worktree> status --porcelain`
+- `git -C <worktree> status --porcelain --untracked-files=all` (未追跡ディレクトリを 1 行にまとめさせず、ファイル単位で見る)
 - `git -C <worktree> diff -- <file>`
 - `git -C <worktree> ls-remote origin main`
 - `git -C <worktree> merge-base --is-ancestor <基点SHA> HEAD`
@@ -52,13 +59,15 @@ if c!=1: sys.exit(f"old の出現が {c} 回")
 open(p,"w").write(s.replace(old,new,1))
 ```
 
-**禁止**: 上記以外のあらゆるコマンド (`wrangler` の全サブコマンド / `gh` / force push / main への push / 上記の `reset -q -- <files>` 以外の `git reset` / `git stash` / `rm` / 渡されていないファイルの add / worktree の外への書き込み)。
+**禁止**: 上記以外のあらゆるコマンド (`wrangler` の全サブコマンド / `gh` / force push / main への push / 上記の `reset -q -- <files>` 以外の `git reset` / `git stash` (分割 commit の「残す変更」を退避する目的でも使わない) / `git reset --hard` / `git checkout -- <file>` / `git clean` / `rm` / 渡されていないファイルの add / worktree の外への書き込み)。
 
 ## 確認 4 点 (1 つでも満たさなければ、commit せず理由を返す)
 
 1. **worktree** — `test -f <worktree>/.git` が成功し、`rev-parse --show-toplevel` が渡されたパスと一致する
 2. **branch 名と基点** — 作業 branch 名が入力 2 の形で、`main`・`master` ではない。`merge-base --is-ancestor <基点SHA> HEAD` が成功する。`ls-remote origin main` が基点と違うときは NG にせず `## 交差` に両方の SHA を書く
-3. **触るファイル** — add 後の `git diff --cached --name-only` が、渡された一覧と完全に一致する。さらに `git status --porcelain` に、渡された一覧に無い変更・未追跡ファイルが残っていない
+3. **触るファイル** — add 後の `git diff --cached --name-only` が、渡された一覧 (入力 4) と完全に一致する。さらに `git status --porcelain --untracked-files=all` に残る変更・未追跡ファイルが、次のどちらかであること:
+   - 分割宣言が**無い** → 何も残っていない
+   - 分割宣言が**ある** → 残っているパスの集合が、渡された「残す変更の一覧」と**完全に一致する** (過不足とも NG。「残す一覧」のファイルが add 済みなのも NG)
 4. **公開テキスト** — add の**後**に、`git diff --cached --unified=0` (新規ファイルも全文が `+` 行として出る) から `+` で始まる行 (`+++` を除く) を**機械的に**抜き出して一時ファイルに書く。**要約・抜粋・目視での選別をしない。** commit message も同じファイルに足し、`scan_public_text.py` がその 1 ファイルで exit 0。exit 1 なら出力をそのまま `## 検出箇所` に転記する
 
 ## 手順
@@ -67,22 +76,24 @@ open(p,"w").write(s.replace(old,new,1))
 2. 作業 branch でなければ `git switch -c <作業branch>`
 3. 入力 6 があれば置換スクリプトで編集
 4. `git add -A -- <渡されたファイル>...`
-5. 確認 3 と 4。NG なら `git reset -q -- <渡されたファイル>...` で add を戻して返す (commit・push はしない)
+5. 確認 3 と 4。NG なら `git reset -q -- <渡されたファイル>...` で add を戻して返す (commit・push はしない)。分割宣言があっても「残す変更」を stash・reset --hard 等で退避しない (worktree に置いたまま、add しないだけ)
 6. 4 点すべて OK なら commit → push → `log -1`
 7. 固定フォーマットで返す
 
 push や branch 作成が拒否された (non-fast-forward・権限・分類器) ときは、再試行も別の手段も取らず、拒否文言をそのまま書いて返す。
 
-## 出力フォーマット (固定、全体 ≤16 行)
+## 出力フォーマット (固定、全体 ≤18 行)
 
 ```
 ## 確認4点
 - worktree: <OK | NG(理由)>
 - branch・基点: <OK | NG(理由)>
-- 触るファイル: <OK(n 個) | NG(…)>
+- 触るファイル: <OK(n 個) | NG(…)> (分割時は `OK(n 個、残り m 個 = 宣言と一致)`)
 - 公開テキスト: <OK | NG>
 ## 交差
 - <無し | 指示の基点 <SHA> / ls-remote <SHA>>
+## 分割
+- <無し | split k/N、残す m 個>
 ## 実行
 - branch 作成: <した | 既にその branch | しない>
 - wrangler.toml 編集: <した | 無し | 失敗(理由)>
