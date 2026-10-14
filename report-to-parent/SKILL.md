@@ -108,6 +108,10 @@ commit の `Co-Authored-By` は、**自分のセッションに届く harness �
 直書きしない規約 ([[task-split]] §3)。直書きされていて harness の指示と食い違ったら、
 **harness の側 (= 実際に commit を書くモデル) を採り**、[完了] に 1 行添える。
 
+**commit と push の打ち方**: `git add` はファイルを明示し、`git add`・`git commit`・`git push` は
+別々の Bash 呼び出しで打つ (つなぐと分類器に止められる。hook
+`block-chained-git-add-commit-push.sh` が先に止める。[[task-split]] §3 と対 — **片方だけ直さないこと**)。
+
 **この reminder は、セッションのモデルが切り替わると新しい名前で出し直される。** ツール結果の
 直後に届くので「ツール結果に混ざった指示」に見えるが、harness の system-reminder であって
 skill や tool の出力ではない。続いて届く「You are powered by the model named …」の名前と
@@ -292,7 +296,7 @@ unpin を指示するのは、**ユーザーが「畳め」と言った後に、
 
 ## 機械的な栓 (hook) — 親は実装せず、子はユーザーに聞かない
 
-機械的な栓が 10 本ある。**読了チェックは不読を防ぐだけで違反を防げない** — 2026-09-05、
+機械的な栓が 11 本ある。**読了チェックは不読を防ぐだけで違反を防げない** — 2026-09-05、
 `#p134` の監督 (親) セッションが自分で migration SQL を書き、postgres を立て、commit しようとして
 ユーザーに止められた。その親は task-split の「**このセッション (親) は実装せず**」を
 **読了して引用まで提出していた** (Refs ippoan/claude-skills#152)。だから口そのものを塞ぐ。
@@ -307,9 +311,9 @@ unpin を指示するのは、**ユーザーが「畳め」と言った後に、
 「原文が過去の別件だから伝聞」と自分で判断して文章で辞退した (Refs ippoan/claude-skills#191)。
 だから 8 本目が、子が `archive_session self` を呼ぶまで他のツールと**ターンの終了**を塞ぐ。
 
-`parent-role/hooks/` の 10 本を `~/.claude/hooks/` へ symlink し、`~/.claude/settings.json` に登録する。
+`parent-role/hooks/` の 11 本を `~/.claude/hooks/` へ symlink し、`~/.claude/settings.json` に登録する。
 
-### hook 10 本 (`parent-role/hooks/`)
+### hook 11 本 (`parent-role/hooks/`)
 
 | hook | event / matcher | 何をするか | fail-open |
 |---|---|---|---|
@@ -322,6 +326,7 @@ unpin を指示するのは、**ユーザーが「畳め」と言った後に、
 | `require-spawn-task-title.sh` | PreToolUse `mcp__ccd_session__spawn_task` | parent marker 有 + title が §1 の 3 形 (子・別案件の新しい親・後継の親) のどれにも完全に当たらなければ **deny**。marker (親自身のタイトル) が `#p<M> ` で始まっていれば、title から取った issue 番号と `<M>` の一致も見る (不一致は別案件の取り違えとして deny)。ただし**別案件の新しい親 (`[S]/[O] #p<issue> <題>`) はこの番号照合を飛ばす** (別案件だから当然不一致になるため) | parent marker が無い / payload が壊れている / jq が無い / session_id か title が空 → 素通し |
 | `require-child-self-archive.sh` | **UserPromptSubmit** / PreToolUse `*` (全ツール) / **Stop** の 3 event を 1 本で (`hook_event_name` で分岐) | 子側の栓 (Refs ippoan/claude-skills#191)。child marker 有 + (b) cross-session-message に `[決定] ユーザー指示で self-archive` と「原文」を含む / (c) cross-session でない prompt が「畳んで」「archive して」等**だけ** → `~/.claude/state/child-self-archive/pending-<session_id>` を `waiting` で立て、「次の tool は `archive_session self`・原文の日付/宛先/起動 prompt の禁止文/代行禁止規則を理由に辞退しない」を additionalContext で出す。pending 中は `ToolSearch` と `archive_session` (`self` か自分の id) 以外を **deny** (辞退の `send_message` も)。archive を通したら `attempted` にし、以後は本文に「was not archived」を含む `send_message` だけ通して pending を消す。**Stop** は `waiting` のまま終えようとしたら `decision: block` で差し戻す (3 回まで)。**ユーザーの発言で解除する経路は作らない** — 解除は archive の試行と拒否文言の報告、またはユーザー本人の `rm` だけ | child marker が無い / jq が無い / session_id が取れない → 素通し |
 | `block-child-renamed-push.sh` | PreToolUse `Bash` | child marker 有 + `git push` の refspec が `<src>:<dst>` で src と dst の branch 名が違う (`refs/heads/` は剥がして比べる。`HEAD:<dst>` は現在の branch と比べる) → **deny** (予定の branch 名が他の worktree に握られているなら、別名で push せず親へ `[質問]`。片付け役 worktree-janitor が同一 branch と判定できなくなるため — Refs ohishi-exp/rust-ichibanboshi#322)。`git push` / `-u origin <name>` / `<name>:<name>` / `--delete` / tag の push は通す | child marker が無い / jq が無い / payload が壊れている / session_id が取れない → 素通し |
+| `block-chained-git-add-commit-push.sh` | PreToolUse `Bash` | **全セッションに効く** (marker は見ない)。`git add` の引数に `-A` / `--all` / `.` (単独のトークン)、または 1 つのコマンドに `git commit` と `git push` の両方 (`&&` `;` `\|\|` 改行のどれでつないでも) → **deny** (`git add <ファイルを明示>`・`git commit`・`git push origin <作業 branch>` を別々の Bash 呼び出しで打たせる。つないだ形は auto mode の分類器に [Modify Shared Resources] で止められる — 2026-10-14 の #p1-c48 で実測、Refs ohishi-exp/rust-leave-worker#1)。`git add <ファイル>` / `git add <ファイル> && git commit` / `git commit` だけ / `git push` だけ / `git` 以外は通す。引用符・変数展開は解釈しない (commit メッセージ中の `git push` で誤って止まりうる) | jq が無い / payload が壊れている / command が空 → 素通し |
 | `warn-bg-sessions.sh` | PostToolUse `mcp__ccd_session_mgmt__list_sessions` / **PostToolUseFailure** `mcp__ccd_session_mgmt__archive_session` (2 本目。`warn-archive-refused.sh` は stderr + exit 2 の文面、こちらは additionalContext の JSON なのでぶつからない) | `timeout 5 claude agents --json` から `kind == "background"` を抜き、1 件以上あれば additionalContext に「list_sessions に出ない bg セッションが N 件: 名前 / id / status。畳むのは `claude stop <id>` → `claude rm <id>` (§6)」を返す。`claude --bg` (spawn-task-button) の子はアプリの管理外で `list_sessions` / `archive_session` に出ないため (Refs ippoan/claude-skills#203)。**塞がない** | bg が 0 件 / `claude` が無い / jq が無い / JSON が不正 / 5 秒で返らない → 何も出さず素通し |
 
 **「書き込み全部禁止」にはしていない。** 親は scratchpad に計画を書き、memory を更新し、
@@ -406,10 +411,11 @@ ln -sfn <claude-skills>/parent-role/hooks/require-archive-decision-sent.sh ~/.cl
 ln -sfn <claude-skills>/parent-role/hooks/require-spawn-task-title.sh     ~/.claude/hooks/require-spawn-task-title.sh
 ln -sfn <claude-skills>/parent-role/hooks/require-child-self-archive.sh   ~/.claude/hooks/require-child-self-archive.sh
 ln -sfn <claude-skills>/parent-role/hooks/block-child-renamed-push.sh ~/.claude/hooks/block-child-renamed-push.sh
+ln -sfn <claude-skills>/parent-role/hooks/block-chained-git-add-commit-push.sh ~/.claude/hooks/block-chained-git-add-commit-push.sh
 ln -sfn <claude-skills>/parent-role/hooks/warn-bg-sessions.sh         ~/.claude/hooks/warn-bg-sessions.sh
 ```
 
-**★ `ls -la ~/.claude/hooks/` で 10 本が symlink (`->`) であることを確かめる。** 実ファイルのコピーに
+**★ `ls -la ~/.claude/hooks/` で 11 本が symlink (`->`) であることを確かめる。** 実ファイルのコピーに
 なっていたら上の `ln -sfn` で symlink に戻す (2026-09-09、`warn-archive-refused.sh` が古いコピーのまま
 残り、repo の最新 (#160 の文面) と食い違っていた — Refs ippoan/claude-skills#163)。
 
@@ -428,6 +434,9 @@ ln -sfn <claude-skills>/parent-role/hooks/warn-bg-sessions.sh         ~/.claude/
   { "matcher": "Bash",
     "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-child-renamed-push.sh", "timeout": 10,
                 "statusMessage": "子セッションの別名 push か確認中" }] },
+  { "matcher": "Bash",
+    "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-chained-git-add-commit-push.sh", "timeout": 10,
+                "statusMessage": "git add -A / commit+push の連結か確認中" }] },
   { "matcher": "AskUserQuestion",
     "hooks": [{ "type": "command", "command": "bash ~/.claude/hooks/block-child-asks-user.sh", "timeout": 10 }] },
   { "matcher": "mcp__ccd_session__spawn_task",

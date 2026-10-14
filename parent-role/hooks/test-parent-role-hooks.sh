@@ -14,6 +14,7 @@ E="${HERE}/warn-archive-refused.sh"
 G="${HERE}/require-spawn-task-title.sh"
 J="${HERE}/block-child-renamed-push.sh"
 K="${HERE}/warn-bg-sessions.sh"
+L="${HERE}/block-chained-git-add-commit-push.sh"
 
 SANDBOX=$(mktemp -d /tmp/parent-role-hooks-test.XXXXXX)
 trap 'rm -rf "$SANDBOX"' EXIT
@@ -731,6 +732,39 @@ o=$(run_bg '{"kind":"background"}' PostToolUse)
 check 207 K '配列でない JSON → 出力なし' "" "$o"
 o=$(printf '%s' "$(bg_payload PostToolUse)" | PATH="$NOJQ_PATH" "$(command -v bash)" "$K" 2>/dev/null; echo "rc=$?")
 check 208 K 'jq が無い → 出力なし・exit 0' 'rc=0' "$o"
+reset_markers
+
+echo
+echo "=== L. block-chained-git-add-commit-push.sh (PreToolUse Bash。git add -A / commit+push の連結を全セッションで止める — Refs ohishi-exp/rust-leave-worker#1) ==="
+chain_check() { # <#> <説明> <期待> <command>
+  check "$1" L "$2" "$3" "$(decision "$(run "$L" "$(bash_payload "$SID" "$4")")")"
+}
+reset_markers
+echo "--- L-a. 陽性 (deny) ---"
+chain_check 209 'add -A && commit && push → deny' deny 'git add -A && git commit -m x && git push origin b'
+chain_check 210 'add . ; commit → deny' deny 'git add . ; git commit -m x'
+chain_check 211 'commit && push → deny' deny 'git commit -m x && git push'
+chain_check 212 '-C <dir> add --all → deny' deny 'git -C /tmp/r add --all'
+chain_check 213 '改行でつないだ commit / push → deny' deny $'git commit -m x\ngit push origin b'
+chain_check 214 '|| でつないだ commit / push → deny' deny 'git commit -m x || git push'
+echo "--- L-b. 陰性 (allow) ---"
+chain_check 215 'add <ファイル> → allow' allow 'git add a.ts b.ts'
+chain_check 216 'add <ファイル> && commit → allow' allow 'git add a.ts && git commit -m x'
+chain_check 217 'commit だけ → allow' allow 'git commit -m x'
+chain_check 218 'push だけ → allow' allow 'git push origin b'
+chain_check 219 'ls -A (git 以外) → allow' allow 'ls -A'
+chain_check 220 'add ./src (単独の . ではない) → allow' allow 'git add ./src'
+d=$(run "$L" "$(bash_payload "$SID" 'git add -A')")
+check 221 L 'deny 文言に「別々の Bash 呼び出し」' yes "$(has "$d" '別々の Bash 呼び出し')"
+mk_child "$SID"
+chain_check 222 'child marker 有でも deny (全セッションに効く)' deny 'git add -A'
+reset_markers; mk_parent "$SID"
+chain_check 223 'parent marker 有でも deny (全セッションに効く)' deny 'git add -A'
+reset_markers
+check 224 L '壊れた payload → 素通し' allow "$(decision "$(run "$L" 'not json')")"
+check 225 L 'command が空 → 素通し' allow "$(decision "$(run "$L" "$(bash_payload "$SID" '')")")"
+nojq=$(printf '%s' "$(bash_payload "$SID" 'git add -A')" | PATH="$NOJQ_PATH" "$(command -v bash)" "$L" 2>/dev/null; echo "rc=$?")
+check 226 L 'jq が無い → 素通し (出力なし・exit 0)' 'rc=0' "$nojq"
 reset_markers
 
 echo
