@@ -1,6 +1,6 @@
 ---
 name: kintai-ops
-description: 勤怠 (kintai) まわりを 3 repo 横断で触るときの運用知識。rust-ichibanboshi / nuxt-dtako-admin / rust-alc-api の PR 作法・親子通信・オンプレの測定手段・カバレッジ 100% gate・踏み抜き済みの罠を 1 枚にまとめる。kintai / 勤怠 / 打刻 / 月ゲート / fold / unko_diff / day_summaries / dtako / デジタコ / alc / 運行NO / 拘束時間 / 乗務員 / 読取日 / スクレイプ を扱うタスク、およびこの領域の子タスクとして起動されたセッションは着手前に必ず読む。
+description: 勤怠 (kintai) まわりを 3 repo 横断で触るときの運用知識。rust-ichibanboshi / nuxt-dtako-admin / rust-alc-api の PR 作法・親子通信・勤怠 Worker の測定手段・カバレッジ 100% gate・踏み抜き済みの罠を 1 枚にまとめる。kintai / 勤怠 / 打刻 / 月ゲート / fold / unko_diff / day_summaries / dtako / デジタコ / alc / 運行NO / 拘束時間 / 乗務員 / 読取日 / スクレイプ を扱うタスク、およびこの領域の子タスクとして起動されたセッションは着手前に必ず読む。
 ---
 
 # kintai-ops — 勤怠まわりの運用知識 (3 repo 横断)
@@ -23,8 +23,9 @@ issue ごとに skill が増えていきます。**置くのは「その issue �
 
 **この skill もタスク台帳も、作業 PC のファイルシステムにしか存在しません。**
 Cowork / remote / スケジュール実行のセッションからは**読めません**。また
-`http://ohishi-data:3100` (§4) は tailscale 経由の内部アドレスなので、
-**作業 PC 以外からは届きません。**
+§4 の測定口 (kyuyo-mcp の tool・ログイン済みブラウザから叩く relay の口) は、
+**その connector やブラウザを持たないセッションからは届きません。**
+勤怠 Worker の口そのものは Service Binding でしか呼べず、手元から直接は叩けません (§4)。
 
 **★ フォルダが無いときの切り分け (これを間違えると静かに事故ります)**
 
@@ -51,19 +52,19 @@ Cowork / remote / スケジュール実行のセッションからは**読めま
 
 ## 0. この領域は何か
 
-オンプレの**打刻**とデジタコ (**dtako**) を Supabase (GCP) に畳んで持ち、勤怠を再計算する
+社内 MariaDB の**打刻**とデジタコ (**dtako**) を Supabase (GCP) に畳んで持ち、勤怠を再計算する
 仕組み。3 repo にまたがる:
 
 | repo | 役割 |
 |---|---|
-| `ohishi-exp/rust-ichibanboshi` | **勤怠の計算ロジック本体** (fold / 月ゲート / 突合)。オンプレと GCP で同じ binary |
+| `ohishi-exp/rust-ichibanboshi` | **勤怠の計算ロジック本体** (fold / 月ゲート / 突合) = `workers/kintai` の **勤怠 Worker** (Cloudflare Worker)。社内 MariaDB (読むだけ) と社内 CakePHP (取り込み・勤務時間再登録) へは勤怠 Worker が Workers VPC で届く。一番星は `workers/ichiban`、root はリモートデスクトップの中継 (rdp-relay) だけ |
 | `ippoan/rust-alc-api` | デジタコの生データを渡す基盤 (運行の列挙 / R2 の CSV / etags) |
 | `ohishi-exp/nuxt-dtako-admin` | 取り込み (スクレイプ / CSV 分割 / relay) と管理画面 |
 
 **いまの数字と進捗はここに書きません** (上表のとおり memory と issue が持ちます)。
 
 **★ 症状だけでは処方が決まりません。** 「行が N 行足りない」は原因が複数あり、処方が
-全部違います (窓の外に落ちた / 乗務員が付いていない / オンプレの行が古い / 元データが
+全部違います (窓の外に落ちた / 乗務員が付いていない / MariaDB の行が古い / 元データが
 編集された)。**原因を確かめる前に処方 (取り直し等) を当てにいくのが、この領域で最も
 時間を溶かす動きです。**「行が足りない」「値が違う」は症状であって診断ではありません。
 
@@ -71,9 +72,23 @@ Cowork / remote / スケジュール実行のセッションからは**読めま
 
 | repo | 引き金 |
 |---|---|
-| `ohishi-exp/rust-ichibanboshi` | **PR 作成** (CI green → auto squash merge → GCP image) |
+| `ohishi-exp/rust-ichibanboshi` | **PR 作成** で CI green → auto squash merge (`ci.yml` の `auto-merge` job)。本番への出方は対象ごとに違う (下表) |
 | `ippoan/rust-alc-api` | **PR 作成** (auto merge + auto tag + auto flip) |
 | `ohishi-exp/nuxt-dtako-admin` | **PR 作成** (auto merge → auto flip) |
+
+(`rust-alc-api` / `nuxt-dtako-admin` の行は下の実測時点の記述。今の `on:` は再確認していない — 要確認)
+
+`ohishi-exp/rust-ichibanboshi` の中の分かれ方 (2026-10-15、`.github/workflows/` の `on:` で確認):
+
+| 対象 | 本番に出る引き金 |
+|---|---|
+| `workers/kintai` (勤怠 Worker) | **tag `worker-kintai-v*` の push** (`worker-kintai.yml`)。**merge では本番に出ない** |
+| `workers/ichiban` (一番星) | **tag `worker-ichiban-v*` の push** (`worker-ichiban.yml`) |
+| root の rdp-relay | **main merge** で `ci.yml` の deploy job がオンプレへ |
+| Supabase の勤怠 migration (`migrations/`) | **main merge** で `ci.yml` の `kintai-migrate` job が本物に当てる |
+
+`tag-release.yml` は `workflow_dispatch` のみ。worker の tag は merge では打たれない
+(打つのは人。自動で打つ経路が他に無いかは、タグを当てにする前に確かめること)。
 
 **「PR を出してから merge するか考える」ができません。出す = 出る。**
 
@@ -132,7 +147,8 @@ migration の本番適用は **CI のジョブが success になった時点**�
   (`cargo test --test <bin> -- <filter>` / `cargo fmt` / `cargo clippy`) の結果を添えること。
   **coverage gate と skills-check も PR でしか動きません。**
   (`ohishi-exp/nuxt-dtako-admin` は別で、main 以外への push で preview が出る = §1 の repo 固有を参照。
-  `ohishi-exp/rust-ichibanboshi` は未実測なので、必要になったら `.github/workflows/` の `on:` を読むこと)
+  `ohishi-exp/rust-ichibanboshi` は `ci.yml` が `fix/**`・`feat/**`・`claude/**` 等の branch push でも走るが、
+  `worker-kintai.yml` / `worker-ichiban.yml` (workers の test と 100% gate) は PR と main push だけ — 2026-10-15 確認)
 - 唯一のブレーキは CI です
 
 repo 固有:
@@ -187,40 +203,54 @@ sessionId を引き、`mcp__ccd_session_mgmt__send_message` で送ります。
 
 **親の推測も間違います。** prompt に書かれた親の作業仮説は、疑ってよい対象です。
 
-## 4. ★ 測定手段 — オンプレに直接届きます
+## 4. ★ 測定手段 — 勤怠 Worker の口と kyuyo-mcp の tool
 
-```bash
-curl -s http://ohishi-data:3100/health
-curl -s "http://ohishi-data:3100/api/kintai/events?month=2026-06&driver=1078"   # driver 必須
-curl -s "http://ohishi-data:3100/api/kintai/rest-diff?month=2026-06"            # driver 省略可
-curl -s "http://ohishi-data:3100/api/kintai/reading-dates?month=2026-06"        # driver 省略可
-curl -s "http://ohishi-data:3100/api/kintai/day-summaries?month=2026-06"
-```
+**勤怠 Worker (`ichibanboshi-kintai`) の口は Service Binding を持つ Worker からだけ呼べます。**
+手元から `curl` で直接叩く経路はありません。測るときは **kyuyo-mcp の tool** か、
+**ログイン済みブラウザから relay の口** (`dtako.ippoan.org` の `/restraint-api/kintai/*` 等) を使います。
+口の一覧と応答の形の正本は `rust-ichibanboshi` の `workers/kintai/README.md` です。
 
-- **Cloudflare Access の 403 は edge (`rust-ichiban.mtamaramu.com` 経由) にだけ**効きます。
-  tunnel を通らない直接続にサービストークンは要りません
-- **新しい口を足したら、MCP tool の登録を待たずに deploy 後この `curl` で測れます**
-- **★ `http://ohishi-data:3100` は tailscale 経由の内部アドレスです。commit message /
-  PR 本文 / docs / コード内コメントに書かないでください** (ユーザー指示)。測定に使うのは可
-- **`/health` の `backends` を 1 回読めば到達性が確定します。** config を読んで推論しない
-  (`kintai_events: "mariadb"` の 1 行が「オンプレは alc を呼べない」を確定させ、
-  親の設計案 2 つを同時に潰しました)
+| 勤怠 Worker の口 | 読む / 書く先 | kyuyo-mcp の tool | 経路 |
+|---|---|---|---|
+| `GET /api/kintai/events` (driver 必須) | 社内 MariaDB | `get_kosoku_events` | kyuyo-mcp → 勤怠 Worker (直) |
+| `GET /api/kintai/rest-diff` | 社内 MariaDB | `get_rest_diff` | 直 |
+| `GET /api/kintai/kosoku-daily` (+ CakePHP 中継の `pdf-json`) | 社内 MariaDB / 社内 CakePHP | `get_timecard_diff` (紙 = `pdf-json` との比較) | 直 |
+| `GET /api/kintai/kosoku-daily` ↔ Supabase の `day_summaries` | 両側 | `get_kintai_diff` | MariaDB 側は直、GCP 側は relay (`/kintai-relay/{day-summaries,shift-overlaps}`) |
+| Supabase の `day_summaries` | Supabase | `get_kintai_day_summaries` | relay (`/kintai-relay/day-summaries`) |
+| `GET`/`POST /api/kintai/recalc` (fold) | Supabase + auth-worker | `run_kintai_recalc` | relay (`/kintai-relay/recalc`) |
+| `POST /api/dtako/autoload` (② と ③) | 社内 CakePHP (+ ③の材料は MariaDB で数える) | `run_dtako_reimport` | relay (`/kintai-relay/dtako-reimport`) |
+| `PUT /api/restraint/summaries`・`GET /api/restraint/{wage-source,synced-months}` | D1 | `run_kintai_restraint_sync` 等 | relay |
+| `GET /api/kintai/reading-dates` | 社内 MariaDB | **tool なし** | relay が内部で使う (画面の読取日まわり)。直接測るには新しい tool が要る |
+| `GET /api/kintai/tail-gap-probe` | 社内 MariaDB | **tool なし** | 新しい tool が要る |
+| `GET /api/kintai/day-events`・`GET /api/dtako/worktime` | 社内 MariaDB | **tool なし** | relay の `/restraint-api/kintai/day-events-lookup` (画面の「day-events で23桁を引く」) |
+| `GET /api/kintai/unko-gaps` | Supabase + alc etags | **tool なし** | relay の `/restraint-api/kintai/unko-gaps` (画面) |
+| `GET /api/kintai/version`・`timecard/*`・`stale-months` ほか | — | **tool なし** | relay / 画面 / 新しい tool |
+
+(2026-10-15 時点の `nuxt-dtako-admin/workers/kyuyo-mcp/src/mcp/tools.ts` で確認。tool の増減は
+そちらが正。`get_wage_report`・`get_restraint_summary` は勤怠 Worker を読まない — 下記)
+
+- **「tool なし」の口を「0 件だった」と読まないこと。** 叩けていないだけです。届かない口で
+  0 件と結論するのは §6 の「検索して 0 件」と同型の失敗です
+- **新しい口を足しても、tool が無ければ測れません。** 測る手段 (tool か relay の口) まで同じ
+  作業に含めるか、先に親へ `[質問]` で「測れない」ことを伝えること
+- **到達性は応答で確かめる。** 勤怠 Worker が社内 MariaDB / CakePHP に届かないときは 502 / 503 に
+  段と種別 (`stage` / `kind`、`MariaDB query failed: <段>:<種別>` 等) が出ます。config を読んで推論しない
 
 **★★ GCP 側の「拘束の内訳 (どの時刻からどの時刻までを拘束と見たか)」を覗く口は無い** (2026-08-04 確認)。
 
 | 口 | 返るもの |
 |---|---|
-| `get_kosoku_events` | **オンプレの `dtako_events` だけ。** GCP 側は 1 行も返らない |
+| `get_kosoku_events` | **社内 MariaDB の `dtako_events` だけ** (勤怠 Worker の `events`)。GCP 側は 1 行も返らない |
 | `get_kintai_day_summaries` | **集計値のみ** (`restraint_minutes` 等)。区間レベルの内訳は無い |
 | `get_kintai_diff` | 両側の集計値。内訳は無い |
 
 **⇒ 「GCP が何を見てその数字を出したか」は現状わからない。** 両側の集計値が食い違う原因を
-最後まで詰めるには、**`rust-ichibanboshi` に診断用の口を足すしかない**
+最後まで詰めるには、**勤怠 Worker (`rust-ichibanboshi/workers/kintai`) に診断用の口と、それを測る tool を足すしかない**
 (ファイル名・ソースを触っても勤怠の版 `logic_version` は変わらない (etag は変わる)。§5 参照)。
 
 **★ `get_restraint_summary` を GCP のライブ値と混同しないこと。** これは**給与比較アーカイブ**で、
 
-- **第三の値**を返す (実例: `1575/2026-02-06` が `day_summaries` 945 / オンプレ 626 に対して **657**)
+- **第三の値**を返す (`day_summaries` とも MariaDB 由来の値とも違う数字が出ることがある)
 - **`fetched_at` / `last_verified_at` が数週間前**のことがある (定期エクスポートのスナップショット)
 - **暦日 (day5/day6) ベース**で、`day_summaries` の `乗務員CD|暦日|開始時刻` (シフト境界ベース) とは**軸が違う**
 
@@ -233,9 +263,9 @@ curl -s "http://ohishi-data:3100/api/kintai/day-summaries?month=2026-06"
 | 経路 | 読む先 |
 |---|---|
 | **MCP `get_wage_report`** | **R2 の給与比較アーカイブ** (`loadMonthSummaries` → `restraint/{comp}/…`)。上の `get_restraint_summary` と同じスナップショット |
-| **画面 `/restraint-api/wage-report`** | **relay 経由のライブ** (`loadWageReportSource` = ichiban への fetch + 打刻の live-build) |
+| **画面 `/restraint-api/wage-report`** | **relay 経由のライブ** (`loadWageReportSource` = 勤怠 Worker の `GET /api/restraint/wage-source` (D1) + 打刻の live-build) |
 
-**実例 (`1718/2026-06`)**: MCP は 実働 233h48m、画面は 244h42m。**MCP の値で画面の異常を否定してはいけない。**
+同じ乗務員の実働が数時間ずれることがある。**MCP の値で画面の異常を否定してはいけない。**
 `get_restraint_summary` への注意 (アーカイブでありライブではない) は **`get_wage_report` にもそのまま当てはまる。**
 
 **⇒ 画面の数字を検証したいなら、画面と同じ口を叩く。** ブラウザから直に取れる (下記)。
@@ -290,14 +320,15 @@ Authorization: Bearer <logi_auth の accessToken>
 
 | 相手 | 認証 | 誰が届くか |
 |---|---|---|
-| **オンプレ rust** (`ohishi-data:3100`) | 不要 (CF Access は edge だけ) | 作業 PC / オンプレ内 |
-| **社内 nginx (CakePHP)** = 内部ホスト | **`view` / `autoload` など主要 action は `AppController::beforeFilter` の `addUnauthenticatedActions` で認証免除**。ただし **CakePHP の CSRF は別**で、フォームに `_csrfToken` があり **対の cookie は HttpOnly** | **オンプレからは届く。Cloudflare の worker からは届かない** (内部アドレス) |
+| **勤怠 Worker** (`ichibanboshi-kintai`) | Service Binding (呼び手の Worker が binding を持つこと)。書き込みの口 (`POST /api/dtako/autoload` 等) は **`X-Kintai-Write-Token`** も要る | relay / kyuyo-mcp (binding 経由)。手元からは直接届かない |
+| **社内 CakePHP (nginx)** | **`view` / `autoload` など主要 action は `AppController::beforeFilter` の `addUnauthenticatedActions` で認証免除**。ただし **CakePHP の CSRF は別**で、フォームに `_csrfToken` があり **対の cookie は HttpOnly** | **勤怠 Worker が Workers VPC で届く** (`KINTAI_CAKEPHP_VPC`)。他の Worker からは勤怠 Worker を通す |
+| **社内 MariaDB** | 勤怠 Worker の資格情報 (secret) | **勤怠 Worker が Workers VPC で届く (SELECT だけ)** |
 | **`dtako.ippoan.org` (nuxt SPA)** | **要る。token は `localStorage`、サーバ側 DO の TTL 8h** (`useTheearthSession`)。`authHeaders()` が読む | **relay / kyuyo-mcp は自前で theearth にログインできる** (`DTAKO_ACCOUNTS` を KV に持つ) |
 
-**⇒ 3 つを 1 か所から自動で繋ぐ経路は無い。**
+**⇒ 社内側 (MariaDB・CakePHP) へ届く主体は勤怠 Worker だけ。** relay / kyuyo-mcp はそこを通す。
 
-- **社内 nginx の `pdf-json` (勤怠 PDF の元 JSON) はオンプレからだけ叩ける**:
-  `ssh <オンプレ (§4 のホスト)>` → `curl 'http://127.0.0.1:120/time-card/pdf-json?month=2026-04&recalc=0'`。
+- **社内 CakePHP の `pdf-json` (勤怠 PDF の元 JSON) は勤怠 Worker の `GET /api/kintai/pdf-json` が中継する**
+  (kyuyo-mcp の `get_timecard_diff` が読む。画面からは relay の `/restraint-api/kintai/pdf-json`)。
   relay の `timecard-compare` の fixture (`workers/dtako-scraper-relay/test/fixtures/pdf-json-*.json`) は
   この応答を 3 名 × 数日に間引いたもの (repo 側のコメントからは nuxt-dtako-admin#1073 で手順を伏せ、ここが正本)
 - **token を URL に載せる案は成立しません** — localStorage にあり 8 時間で失効し、履歴とログに残る
@@ -306,28 +337,28 @@ Authorization: Bearer <logi_auth の accessToken>
 - **ブラウザ操作 (claude-in-chrome) が使えるなら、それが最短**。認証も CSRF も
   ブラウザが持っているものをそのまま使えるので、資格情報をどこにも移さずに済む
 
-**★ 「オンプレ rust から外部を fetch しない」は `dtako_day` (リンク組み立て) 限定の注意。**
-一般則ではない — オンプレは既に auth-worker (`/auth/introspect`) を fetch している。
+**★ 社内側に secret を置くのは不可** (2026-08-01 オーナー判断)。
+資格情報は Cloudflare 側 (relay・勤怠 Worker) に持ち、社内側へは **Worker から VPC で届く方向**にする
+(拘束サマリの `PUT /api/restraint/summaries` も relay → 勤怠 Worker (D1) の push)。
 
-**★ ただしオンプレに secret を置くのは不可** (2026-08-01 オーナー判断)。
-外へ出る必要があるときは **relay → オンプレの push 方向**にする
-(`PUT /api/restraint/summaries` と同じ流儀。**資格情報は relay 側に既にある**)。
+## 4.6 `unko_no` の桁が MariaDB 由来と GCP で違う
 
-## 4.6 `unko_no` の桁がオンプレと GCP で違う
-
-**オンプレ (MariaDB) は 23 桁、GCP (alc 由来) は 22 桁**で、突合は先頭 22 桁で当てています
-(`unko_diff_trials` の `prefix22`)。**社内 nginx の URL キーは 23 桁**なので、
-**リンクを作れるのはオンプレ側の値だけ**。22 桁を混ぜると存在しない運行を指します。
+**社内 MariaDB 由来は 23 桁、GCP (alc 由来) は 22 桁**で、突合は先頭 22 桁で当てています
+(`unko_diff_trials` の `prefix22`)。**社内 CakePHP の URL キーは 23 桁**なので、
+**リンクを作れるのは MariaDB 由来の値だけ**。22 桁を混ぜると存在しない運行を指します。
 
 ## 4.7 ★ ずれた値を直す導線 (3 段。どこが誰の担当かが毎回問題になる)
 
 ```
-① csvdata.zip を取る    theearth        relay が DTAKO_ACCOUNTS で自前ログインできる
-② 社内 nginx へ取り込む   autoload        オンプレ rust だけが内部アドレスに届く
-③ 勤務時間再登録         resetbyUnkoNo   人がボタンを押す
+① csvdata.zip を取る       theearth        relay が DTAKO_ACCOUNTS で自前ログインできる
+② 社内 CakePHP へ取り込む   autoload        勤怠 Worker が VPC で中継 (POST /api/dtako/autoload)
+③ 勤務時間再登録            resetbyUnkoNo   勤怠 Worker が②の後に打つ (reset_timecard=true) / 人が画面のボタンを押す
 ```
 
-### ② の口 (`POST <nginx>/dtako-events/autoload`)
+### ② の口 (`POST <社内 CakePHP>/dtako-events/autoload`)
+
+勤怠 Worker の `POST /api/dtako/autoload` がこの口を中継する (`X-Kintai-Write-Token` 必須)。
+以下は CakePHP 側の挙動。
 
 - **認証もCSRFも免除済み。** `AppController::beforeFilter` の
   `addUnauthenticatedActions` に `autoload`、**`Application.php` の CSRF ホワイトリストにも
@@ -358,8 +389,9 @@ Authorization: Bearer <logi_auth の accessToken>
 
 ```
 run_dtako_reimport { comp_id, ope_no_22, start_ope, unko_no, reset_timecard? }
-  → relay が theearth から zip 取得 (自前ログイン) → 検証 → オンプレへ push
-  → nginx へ取り込み → (任意で) 勤務時間再登録
+  → relay が theearth から zip 取得 (自前ログイン) → 検証
+  → 勤怠 Worker の POST /api/dtako/autoload へ → 社内 CakePHP へ取り込み (②)
+  → (reset_timecard=true なら) 勤怠 Worker が MariaDB で材料を数えてから勤務時間再登録 (③)
 ```
 
 **モデルは base64 を運ばない** (以前は書き写して壊れていた)。
@@ -367,7 +399,7 @@ run_dtako_reimport { comp_id, ope_no_22, start_ope, unko_no, reset_timecard? }
 
 ### ★ `unko_no` は「取り込み先の鍵」ではない (2026-08-04 実コード確認・tool 説明が誤り)
 
-**`reset_timecard: false` (既定) では、取り込む中身を決めるのは zip (`ope_no` + `start_ope`) で
+**`reset_timecard: false` では、取り込む中身を決めるのは zip (`ope_no` + `start_ope`) で
 あって `unko_no` ではない。** `unko_no` は「1 件に紐付ける歯止めと監査ラベル」でしかない
 (`dtako-reimport.ts` の `UNKO_NO_RE` の doc comment)。**23 桁目 (対象CD) が意味を持つのは
 `reset_timecard: true` (③ `resetby-unko-no/{unko_no}`) のときだけ。**
@@ -404,34 +436,20 @@ tool 説明を読んで迷ったら、この節と `dtako-reimport.ts` の実コ
 `PUSHED_SOURCES = ["timecard","dtako"]`。`dtako_events` は入らない)。
 ⇒ **②だけを打っても候補一覧からは消えない。** 値が直っても候補に残るのは正常。
 
-### ★★★ ② だけでは GCP に永久に届かない — ③ を呼ばないと反映されない (2026-08-04 実証)
+### ★★★ ② だけでは GCP に届かない — ③ を呼ばないと反映されない (2026-08-04 実証)
 
-**`rust-ichibanboshi` の `src/kintai_push.rs:84`:**
-
-```rust
-/// `dtako_events` (デジタコ生イベント) が入っていないのは決定 5 のとおり R2 に永続化済みだから。
-pub const PUSHED_SOURCES: [&str; 2] = ["timecard", "dtako"];
-```
-
-`kintai_pg_repo.rs` の `fetch_all_events_between` がこれで絞って **GCP の fold の入力**を作る。
+`PUSHED_SOURCES` (`timecard` / `dtako`。今の定義は `rust-ichibanboshi` の
+`workers/kintai/kosoku/src/kintai_push.rs`) が **GCP の fold の入力**を絞る。
+`dtako_events` (デジタコ生イベント) はここに入らない。
 
 | | 読む先 | 更新するのは |
 |---|---|---|
-| **オンプレ** `kosoku-daily` | **`dtako_events`** | **② (`reset_timecard: false`)** |
+| **MariaDB 由来** (勤怠 Worker の `kosoku-daily`) | **`dtako_events`** | **② (`reset_timecard: false`)** |
 | **GCP** の fold | **`time_card_dtako` 由来 (`dtako` source)** | **③ (`reset_timecard: true`) だけ** |
 
-**⇒ `run_dtako_reimport` の既定 (`reset_timecard: false`) は `dtako_events` しか書かず、
+**⇒ `reset_timecard: false` の取り込みは `dtako_events` しか書かず、
 勤務時間再構築 (③) を呼ばない。GCP 側の値は 1 ミリも動かない。**
-
-**実証 (`1575 / 2026-02-06`、31 分の按分ずれ)**:
-
-```
-run_dtako_reimport   ×5 回   GCP の break 143 は 1 度も動かず
-run_dtako_alc_upload ×4 回   同上 (drivers_written: 0 が毎回)
-run_kintai_relay     ×1 回   同上
-─────────────────────────────────────────
-オーナーが画面から ③ (勤務時間再登録) を実行 → ② で取り込み直し → **差 0 件**
-```
+②を何回打っても、alc の上げ直しや畳み直しを重ねても動かず、③ → ② で初めて差が消えた実例がある。
 
 **⇒ 「② を何回打っても GCP が動かない」ときは、③ を打っていないことを疑う。**
 **`bytes` が同じでも直ることがある** — theearth の中身ではなく、**どのテーブルを書いたか**が効くため。
@@ -448,6 +466,8 @@ run_kintai_relay     ×1 回   同上
 **旧実装は `休息` だけを数えていて、`運行開始`/`運行終了` しか無い運行を
 `reset_skip_reason: "no_dtako_events"` で誤ってスキップしていた**
 (2026-08-04 に本番で実害。`rust-ichibanboshi#290` で 3 種とも数えるよう修正済み)。
+今は勤怠 Worker が `POST /api/dtako/autoload` の中で、②が 2xx のあと社内 MariaDB で材料を数え
+(`RESET_MATERIAL_SQL`)、1 件以上のときだけ③を打つ。
 **`休憩` は材料ではない — `休息` とは別のイベント。**
 
 ### ★ 値ずれの型 (実データで確定、2026-08-01)
@@ -464,57 +484,35 @@ run_kintai_relay     ×1 回   同上
 | **月の fold が未実行** | **`run_kintai_recalc { apply: true }` を回すだけ** | `only_onprem_other` が数百件規模 (通常の按分ずれは数件〜十数件)。`stale_only: true` の dry-run で `stale.drivers` が大半を占める |
 | **月末の月跨ぎ勤務 (終業が翌月扱い)** | **待つ (翌月の打刻が push されるまで畳めない)** | `run_kintai_recalc` の warnings に「push 窓ずれ: 対象月の fold が読む翌月1日に打刻が0行」。差が月末日 (07-31等) に偏る |
 
-**`rest-diff` に出ない = ②も効かない、ではない。** `1536|06-29` は②だけで完全一致した。
+**`rest-diff` に出ない = ②も効かない、ではない。** ②だけで完全一致した実例がある。
 
-**★ 2026-08-04、2026-07を測って分かったこと**: 対象月をまだ誰も手動で測っていない場合、`only_onprem_other` が数百〜千件規模で出ることがある。これは按分ずれではなく**単に fold (`run_kintai_recalc { apply: true }`) が一度も回っていないだけ**であることが多い。まず `stale_only: true` の dry-run で `stale.drivers` の比率を見て切り分けること (症状の桁が通常の按分ずれと違う場合は、まずこれを疑う)。fold後に残る少数の `only_onprem_other` のうち、**対象月の末日に集中するもの**は、翌月の打刻がまだGCPにpushされていないことによる構造的な未確定 (bug ではない) で、翌月分のデータが揃うまで待てば自然に解消する。
+**★ 誰もまだ測っていない月**は、`only_onprem_other` が数百〜千件規模で出ることがある。
+按分ずれではなく**単に fold (`run_kintai_recalc { apply: true }`) が一度も回っていないだけ**であることが多い。
+まず `stale_only: true` の dry-run で `stale.drivers` の比率を見て切り分けること
+(症状の桁が通常の按分ずれと違う場合は、まずこれを疑う)。
 
-**★★ 2026-08-04 追記・訂正: 「月末日に集中 = push窓ずれ」も「GCP側ロジックのバグ」も
-誤りだった。真因は単純な取り込み漏れ (取り込み対象の unko_no を間違えていただけ)。**
+**★★ fold 後に残る少数の差を「月末日に集中 = push 窓ずれ」「GCP 側ロジックのバグ」と一般化しないこと。**
+実例では真因は単純な取り込み漏れ (対象の `unko_no` の取り違え) だった。教訓は 3 つ:
 
-`1714/2026-07-29` (拘束 1451 分、始業 07-29 23:11:21 → 終業 07-30 23:23:57) を最初に
-`get_kosoku_events` で見たとき、休憩イベント5件 (合計137分、オンプレ break_minutes と
-完全一致) を見つけ、「GCP は打刻の枠内の休憩イベントを一切見ていない」と結論しかけた。
-**この結論は誤りだった** (ユーザーの「他の運行にも起きているはずでは？」という指摘で
-再検証して判明)。
-
-**実際には、5件の休憩は全部 `26073005233300000045611` (07-30 05:23:33 開始) という
-1つの運行の中にあり、この運行そのものが `run_kintai_recalc { stale_only: true }` の
-`unko_diff` (取り込み漏れ候補、「dtako 入力欠け」警告の実体) に載っていた** —
-つまり GCP の `time_card_dtako` にまだ届いていない運行だった。**「①②③を試しても
-直らなかった」のは、その運行に対して打っていなかったから**: `day-events(driver,
-date=07-29)` で日付だけを頼りに引くと、**同じ枠内に別の運行 (`26072900043500000045611`、
-07-29 00:04 開始、GCP に既にある) が先に出てくる**ため、そちらに ①②③ を打っていた
-(効果が無いのは当然、対象を間違えていたため)。
-
-**⇒ 「打刻ベースのGCP計算ロジックが休憩を無視する」という一般化は早合点だった。**
-1714 の他の 25 件 (2026-07、この1件以外は全部一致) が正常に計算できていることからも、
-GCP 側に一律のロジック欠陥は無い。**教訓: 長時間シフトは複数の運行にまたがることがあり、
-`day-events` を単一の日付だけで引くと、シフトの一部を構成する別日開始の運行を
-見落とす。** 差の原因になっている `unko_no` を正しく特定するには、シフト全体の
-開始〜終了の範囲で `day-events` を引き (または `run_kintai_recalc` の `unko_diff` /
-「dtako 入力欠け」警告と突き合わせ)、**投入前にその運行が本当に対象日の差分と
-一致するか確認**すること。「①②③すべて試しても直らない」という報告を鵜呑みにせず、
-まず「本当に正しい運行に対して打ったか」を疑うのが安い。
-
-**★ 正しい運行 (`26073005233300000045611`) に対してすら、`run_dtako_reimport
-{ reset_timecard: true }` は no-op だった (`dtako_events_count` はあるのに数値が
-動かない)。理由は「ツールの選び間違い」というもう一段別の罠**: `run_dtako_reimport`
-は **theearth→オンプレ** (`/api/dtako/autoload`、`dtako_events`/`time_card_dtako` を
-書く) 専用で、**theearth→alc/GCP** 経路には触らない。「dtako 入力欠け」警告 /
-`unko_diff` が指しているのは **alc 側 (GCP が読む方) の欠け**なので、直すツールは
-`run_dtako_alc_upload`。オンプレは既にデータを持っていた (だから reimport が
-no-op になった) が、alc 側だけが空だった。**⇒ `unko_diff`/「dtako 入力欠け」型の
-取り込み漏れは `run_dtako_alc_upload` で直す。`run_dtako_reimport` ではない**
-(この節の冒頭「実働+休憩の和が両側一致」型と同じツールで、原因の絞り込みだけが
-違う)。
+- **長時間シフトは複数の運行にまたがる。** `day-events` を単一の日付だけで引くと、
+  シフトを構成する別日開始の運行を見落とし、**同じ枠内の別の運行 (GCP に既にある方) に ①②③ を打つ**。
+  シフト全体の開始〜終了の範囲で引くか、`run_kintai_recalc` の `unko_diff` /
+  「dtako 入力欠け」警告と突き合わせ、**投入前にその運行が本当に対象日の差分と一致するか確認**する。
+  「①②③すべて試しても直らない」という報告は、まず「本当に正しい運行に打ったか」を疑うのが安い
+- **同じ乗務員の他の日が全部一致しているなら、GCP 側に一律のロジック欠陥は無い。** 一般化の前に反証を 1 本探す
+- **ツールの選び間違い。** `run_dtako_reimport` は **theearth → 社内 MariaDB** (勤怠 Worker の
+  `/api/dtako/autoload`、`dtako_events`/`time_card_dtako` を書く) 専用で、**theearth → alc/GCP** 経路には触らない。
+  「dtako 入力欠け」警告 / `unko_diff` が指すのは **alc 側 (GCP が読む方) の欠け**なので、
+  MariaDB 側が既にデータを持っていれば reimport は no-op になる。
+  **⇒ `unko_diff`/「dtako 入力欠け」型の取り込み漏れは `run_dtako_alc_upload` で直す。`run_dtako_reimport` ではない**
 
 ### ★★★ 「実働+休憩の和が両側一致」= alc が古いだけ。上げ直せば直る (2026-08-04 実証)
 
 **この案件で最も件数が多い型。** `get_kintai_diff` の `value_diff_restraint_match` に出て、
 
 ```
-GCP     working 1076 / break   0     和 1076
-オンプレ working  136 / break 940     和 1076   ← 和が一致、拘束も一致
+GCP          working 多 / break 少     和 = X
+MariaDB 由来  working 少 / break 多     和 = X   ← 和が一致、拘束も一致
 ```
 
 のように **`working_minutes + break_minutes` が両側でぴったり一致**する。
@@ -532,33 +530,31 @@ R2 に CSV は在るが古い    → warnings に一切出ない        ← こ�
 
 **直し方は R2 欠けと同じ — `run_dtako_alc_upload` で運行 1 件を上げ直す。**
 
-**実証 (2026-08-04)**: 2026-05 は `KUDGIVT 取得失敗` 0 件・差 22 件。うち 1 件
-(`1194 / 05-23`、`ope_no 2605230341010000004219`) だけを上げ直して畳み直したら
-**22 → 21**。**対象の 1 件だけがピンポイントで消え、他 21 件・行数・`only_*` は
-1 つも動かなかった。** `drivers_written: 2`。
+**実証 (2026-08-04)**: `KUDGIVT 取得失敗` 0 件の月で、差のうち 1 運行だけを上げ直して畳み直したら
+**対象の 1 件だけがピンポイントで消え、他の差・行数・`only_*` は 1 つも動かなかった。**
 
 **データ側の裏付け**: `get_operation_zip` で theearth の KUDGIVT.csv を読むと
-**休憩合計がオンプレの `break_minutes` と 1 分の狂いもなく一致**する
-(`1387/05-22` は 178=178、`1107/05-09` は 151=151)。**theearth == オンプレ、alc だけが古い。**
+**休憩合計が MariaDB 由来の `break_minutes` と 1 分の狂いもなく一致**する。
+**theearth == MariaDB 由来、alc だけが古い。**
 
-**★ 2マン特有ではない。** 3 件中 2 件が対象CD=1 (単独乗務)。2026-04 では 19 件中
-13 運行が対象CD=1 だった。**「2マンの助手側に休憩がそっくり付く」は誤った一般化。**
+**★ 2マン特有ではない。** 実測では対象CD=1 (単独乗務) の運行が過半だった。
+**「2マンの助手側に休憩がそっくり付く」は誤った一般化。**
 
 ### ★★★ 上げ直しでも取り直しでも直らない按分ずれ → **KUDGIVT の区分=2 に `対象乗務員CD` が入っているかを見る** (2026-08-04 確定)
 
-**この型の中に、alc 上げ直しでもオンプレ取り直しでも 1 分も動かないものが混ざる。**
+**この型の中に、alc 上げ直しでも MariaDB 側の取り直しでも 1 分も動かないものが混ざる。**
 **そのとき原因は「古い」ではなく「材料に乗務員が入っていない」。**
 
 **判別 (read-only、`get_operation_zip` で KUDGIVT.csv を読むだけ):**
 
 ```
-直らない運行 (1697/04-08、2604080513090000006769)
-  区分=1  対象乗務員CD="1697"   休憩+休息 2953 分
-  区分=2  対象乗務員CD=""       休憩+休息 5572 分   ← ★空欄
+直らない運行
+  区分=1  対象乗務員CD="<主>"   休憩+休息 …
+  区分=2  対象乗務員CD=""       休憩+休息 …   ← ★空欄
 
-直った運行 (1194/05-23、2605230341010000004219)
-  区分=1  対象乗務員CD="1738"
-  区分=2  対象乗務員CD="1194"   ← ★入っている
+直った運行
+  区分=1  対象乗務員CD="<主>"
+  区分=2  対象乗務員CD="<助手>"   ← ★入っている
 ```
 
 **KUDGIVT は同じ休息イベントを 区分=1 / 区分=2 の 2 行ずつ持つ。区分=2 が助手枠。**
@@ -569,12 +565,11 @@ R2 に CSV は在るが古い    → warnings に一切出ない        ← こ�
 ```
 拘束 = 実働 + 休憩   ⇒  休憩だと分からない時間は実働に落ちる
 GCP  : 乗務員CD の無い区分=2 を弾く  → 休憩が減り、同じ分だけ実働が増える
-オンプレ: 手がかりが区分=1 の CD しか無いので、その乗務員に付ける → 休憩が多い
+MariaDB 由来: 手がかりが区分=1 の CD しか無いので、その乗務員に付ける → 休憩が多い
 両側とも 拘束 (= 和) は動かない
 ```
 
-**実測 (1697/2026-04 の 6 エントリ)**: オンプレ break 合計 4112 / GCP break 合計 1354。
-**向きも大きさも上の説明と整合する。**
+実測でも MariaDB 由来の break 合計が GCP の数倍あり、**向きも大きさも上の説明と整合した。**
 
 **⇒ 直し方は取り込みではない。** **theearth 側で助手の乗務員を登録してから取り直す**
 (F-DES1011 の乗務員変更、または F-DES1013 の `btnMultiManEdit` 交代データ修正)。
@@ -584,26 +579,22 @@ GCP  : 乗務員CD の無い区分=2 を弾く  → 休憩が減り、同じ分�
 直った運行では区分=2 が正常に機能している (上記)。**別 repo のコード修正に向かう前に、
 必ず「直った 2マン運行の KUDGIVT」と比べること。** 比較 1 件で棄却できる。
 
-**★ diff のエントリ数 = 運行数ではない。** 長距離運行 1 本が複数の暦日に差を出す。
-2026-04 は **19 エントリ = 13 運行** (`1697` は 6 エントリが 1 運行)。
-**`ope_no` で重複を畳んでから投入すること。**
+**★ diff のエントリ数 = 運行数ではない。** 長距離運行 1 本が複数の暦日に差を出す
+(実測で 1 運行が 6 エントリ)。**`ope_no` で重複を畳んでから投入すること。**
 
-**★★ 2026-08-04 追記: 「取り直しでも直らない」と結論する前に `run_dtako_reimport
-{ reset_timecard: true }` (③込み) まで試すこと。** 上の 1697 は単独乗務ではなく
-KUDGIVT の区分=2 (助手枠) の `対象乗務員CD` が空欄という、材料そのものが欠けた型
-だった。だが**別の型として、単独乗務 (区分=2 の行自体が存在しない) の運行で、
-`run_dtako_alc_upload` (① alc側だけの上げ直し) では 1 分も動かないのに、
-`run_dtako_reimport { reset_timecard: true }` (①②③をフルに通す) だと解消する
-ケースが 4 件見つかっている** (2026-07、`1442/07-09` 等)。
-`run_kintai_recalc` の `drivers_written` が `0` (畳み直しは何も変えていない) でも
-解消したので、**②(`dtako_events`) または③(`time_card_dtako`) 側が古かった**ことに
-なる。**⇒ 判別手順: ①だけ上げ直して動かない → すぐに『材料欠け』と結論せず、
+**★★ 「取り直しでも直らない」と結論する前に `run_dtako_reimport
+{ reset_timecard: true }` (③込み) まで試すこと。** 上の区分=2 空欄は材料そのものが欠けた型だが、
+**別の型として、単独乗務 (区分=2 の行自体が無い) の運行で、`run_dtako_alc_upload`
+(alc 側だけの上げ直し) では 1 分も動かないのに、`run_dtako_reimport { reset_timecard: true }`
+(①②③をフルに通す) だと解消するケースがある。** `run_kintai_recalc` の `drivers_written` が `0` でも
+解消したので、**②(`dtako_events`) または③(`time_card_dtako`) 側が古かった**ことになる。
+**⇒ 判別手順: alc だけ上げ直して動かない → すぐに『材料欠け』と結論せず、
 `run_dtako_reimport { reset_timecard: true }` まで一段階進めてから、それでも
-動かなければ KUDGIVT の区分=2 を見て 1697 型かどうかを判定する。**
-(`reset_timecard: true` は #633-24-2 で MCP tool の既定になったので、
+動かなければ KUDGIVT の区分=2 を見て空欄型かどうかを判定する。**
+(`reset_timecard: true` は MCP tool の既定になったので、
 `run_dtako_reimport` を素で呼ぶだけで自動的にこの一段階を含む。)
 
-**★ 2マンは 22 桁 1 本の投入で主・助手の両方が入る。** `1194/05-23` の投入応答が
+**★ 2マンは 22 桁 1 本の投入で主・助手の両方が入る。** 2マン運行の投入応答だけが
 `operations_count: 2` (他は全部 1) で確認。**23 桁を 2 本 (`…1` と `…2`) 投入する必要は無い。**
 
 ### ★ 画面の「③ に入れる」は③を打てない (22桁/23桁の噛み合わせ)
@@ -639,14 +630,14 @@ KUDGIVT の区分=2 (助手枠) の `対象乗務員CD` が空欄という、材
 その `warnings` に **alc の R2 に CSV が無い運行が名指しで出ます**:
 
 ```
-2601060641510000003882: KUDGIVT 取得失敗
+<22 桁の運行NO>: KUDGIVT 取得失敗
   (Upload failed: R2 download status 404: NoSuchKey)
-dtako 入力欠け: R2 に CSV の無い運行 4 件
+dtako 入力欠け: R2 に CSV の無い運行 N 件
 ```
 
 **KUDGIVT が読めないと GCP はイベント (休息) を 1 つも見られず、休息で分割できません。**
 結果、打刻の 始業→終業 1 組だけで畳み、**長距離運行がまるごと 1 日**になります
-(実例: 1104 / 2026-01-06 が **拘束 7887 分 / 残業 7410 分**。オンプレは 685 分)。
+(実例では拘束・残業が数千分になり、MariaDB 由来の値の 10 倍を超えた)。
 
 **★ これは「畳み方の欠陥」ではありません。取り込めば直ります。** 誤診しやすい 2 点:
 
@@ -670,14 +661,14 @@ dtako 入力欠け: R2 に CSV の無い運行 4 件
 
 **②を先に打って、動いたかを測る。これが最初の分岐。**
 
-1. **②(`run_dtako_reimport`) を打つ** → オンプレの日別サマリを前後で比較
-   - **動いた** → オンプレが古かった。終わり
-   - **1 行も動かない** → **theearth の現在値 = オンプレの現在値。古いのは alc 側**
+1. **②(`run_dtako_reimport`) を打つ** → MariaDB 由来の日別サマリ (勤怠 Worker の `kosoku-daily`) を前後で比較
+   - **動いた** → MariaDB 側が古かった。終わり
+   - **1 行も動かない** → **theearth の現在値 = MariaDB 側の現在値。古いのは alc 側**
 2. **alc を疑う** → `/api/proxy/api/operations/{22桁}` (ブラウザ、読むだけ) で
    `raw_data.対象乗務員CD` / `uploaded_at` を見て、`get_operation_zip` の
    `KUDGIVT.csv` の `対象乗務員CD` と突き合わせる。**食い違えば alc が古い**
 3. **拘束そのものが桁違い** → 打刻を疑う。`day-events` で 始業/終業/運行開始/運行終了 を並べ、
-   **始業→終業** と **始業→運行終了** をそれぞれ分で出すと、どちらが GCP・どちらがオンプレか一致する
+   **始業→終業** と **始業→運行終了** をそれぞれ分で出すと、どちらが GCP・どちらが MariaDB 由来か一致する
 
 **★ alc が古くなる原因は 2 つとも「後からの編集」** — **乗務員の付け替え**と
 **イベント分類 (休憩⇄運転) の編集**。どちらも theearth 側だけが新しくなり、alc は
@@ -699,15 +690,15 @@ dtako 入力欠け: R2 に CSV の無い運行 4 件
 | **本社** | **打つのが正常** | **異常。欠けている** |
 
 **★ 所属を確かめずに「打刻が無い/ある」を異常と決めないこと。** 同じ「打刻ゼロ」でも
-営業所なら正常、本社なら欠落。**2026-08-04 に親がこれを取り違え、`1523` (本社) を
+営業所なら正常、本社なら欠落。**2026-08-04 に親がこれを取り違え、本社所属の乗務員を
 営業所と誤認して「余計な終業打刻を消せ」と誤った処方を書いた** (正しくは始業の欠落)。
 
-**実例 (`1523 / 2026-04-23`、本社所属)**:
+**実例の形 (本社所属)**:
 
 ```
-timecard 終業    2026-04-23 15:37:43   ← ★始業が欠けている
-dtako   運行終了 2026-04-23 15:37:43
-dtako   休息     2026-04-23 15:37:43
+timecard 終業    <時刻 T>   ← ★始業が欠けている
+dtako   運行終了 <時刻 T>
+dtako   休息     <時刻 T>
 ```
 
 `shift_source: "timecard"` が終業 1 点だけを拾い、**開始 = 終了 の 0 分シフト
@@ -750,20 +741,13 @@ skill の復旧手順 (管理画面の「CSV分割」= `POST /api/split-csv/{id}
 **「差が出た暦日」を読取日として `run_dtako_scrape` に投入するのは誤り。**
 約半分の運行で**別の日を触ります**。
 
-`/api/kintai/reading-dates?month=2026-05` (driver 省略 = 全乗務員) の実測:
-
-```
-総運行 1098 件
-読取日 != 運行開始日                        580 件 (52.8%)
-うち run_end_date == reading_date (日跨ぎ)   554 件
-```
+勤怠 Worker の `GET /api/kintai/reading-dates?month=` (driver 省略 = 全乗務員) で測ると、
+**読取日 != 運行開始日 の運行が半数を超え、その大半が `run_end_date == reading_date` (日跨ぎ)** だった。
+(この口を叩く kyuyo-mcp の tool は無い — §4 の表。測るなら relay 経由か新しい tool が要る)
 
 つまり**日跨ぎ勤務は翌日に読まれる**のが常態で、例外ではありません。
-
-**実例 (1742 / 2026-05)** — 読取日 `05-30` に載っているのは **05-29 開始の運行**
-(`2605290435180000001101`)。**1742 に 05-30 開始の運行は存在しません。**
-さらに `04-30 / 05-06 / 05-19 / 05-25 / 05-29` は**読取日として 1 件も存在しない**ので、
-その日を投入しようとしても何も起きません。
+ある読取日に載っているのは前日開始の運行で、その日開始の運行は存在しない、ということが普通に起きる。
+**読取日として 1 件も存在しない日**もあり、その日を投入しようとしても何も起きません。
 
 ⇒ **「投入したのに差が残った」の第一容疑はこれ。** 効かなかったのではなく、
 **狙った運行に当たっていない**。
@@ -771,7 +755,7 @@ skill の復旧手順 (管理画面の「CSV分割」= `POST /api/split-csv/{id}
 **正しい順序:**
 
 1. 差が出た暦日の勤務を作っている運行の `unko_no` を特定する
-2. `/api/kintai/reading-dates?month=&driver=` の `items` で、**その `unko_no` の
+2. 勤怠 Worker の `/api/kintai/reading-dates?month=&driver=` の `items` で、**その `unko_no` の
    `reading_date`** を引く (`reading_date` / `run_start_date` / `run_end_date` が
    1 行に並んでいる)
 3. **その読取日**を投入する
@@ -792,7 +776,7 @@ body: {ope_no, start_ope, comp_id?}     header: X-Alc-Proxy-Secret
 ```
 
 - **`unko_no` は不要** — alc の `/api/upload` は zip 内 KUDGURI.csv から読む
-  (`/kintai-relay/dtako-reimport` = オンプレ autoload 向けとの違い。あちらは 23 桁が要る)
+  (`/kintai-relay/dtako-reimport` = 勤怠 Worker の autoload 向けとの違い。あちらは 23 桁が要る)
 - **`ope_no` / `start_ope` は `kintai-diff.ts` の `deriveOpeNoFromUnkoNo(unkoNo)` で機械導出できる**
   (`ope_no22 = unkoNo.slice(0,22)`、`start_ope` は先頭 12 桁 `YYMMDDHHmmss` →
   `"YYYY/MM/DD H:mm:ss"`、**時は 0 埋めなし**)。`handleKintaiRefreshMysql` が同じ導出をしている
@@ -830,6 +814,10 @@ $dd_dr = $this->TimeCardDtako->DtakoRows->find()->where(['id' => $id])
 と **`dtako_rows` を 23 桁で引いて `->first()->対象乗務員CD` を読む**ので、**運行レコードが
 無ければここで落ちる**。⇒ **運行ごと消してある残骸に③は使えない。SQL で消すことになる。**
 
+**★ 要確認: この SQL を誰がどこから打つか (書き込み経路) は未調査です** (2026-10-15)。
+勤怠 Worker は社内 MariaDB を SELECT しかしないので、Worker の口からは消せません。
+打つ前に親へ `[質問]` で経路を確かめること。下の座標 (列名・条件) は CakePHP の実コードで確認済み。
+
 消すときの座標 (実コードで確認済み):
 
 - `time_card_dtako` の運行NO 列は **`unko_no`** (③ は `deleteAll(['unko_no' => $id])`)
@@ -850,7 +838,7 @@ $dd_dr = $this->TimeCardDtako->DtakoRows->find()->where(['id' => $id])
 存在するが**中身が別**で、そちらでは 401 になる (2026-08-01 に踏んだ)。
 
 **`opeNo` は 22 桁** (`OPE_NO_RE = /^\d{22}$/`)、**`startOpe` は `"YYYY/MM/DD H:mm:ss"`**
-(**時は 0 埋めなし**、`START_OPE_RE`)。オンプレの `unko_no` は 23 桁なので**末尾 1 桁を落とす**。
+(**時は 0 埋めなし**、`START_OPE_RE`)。MariaDB 由来の `unko_no` は 23 桁なので**末尾 1 桁を落とす**。
 
 ## 4.8 claude-in-chrome の使いどころと限界
 
@@ -863,39 +851,34 @@ $dd_dr = $this->TimeCardDtako->DtakoRows->find()->where(['id' => $id])
 
 ## 5. rust-ichibanboshi の gate (踏むと確実に落ちます)
 
-- **カバレッジ 100% gate**: `coverage_100.toml` に登録したファイルは 100% 行カバレッジ維持。
-  CI が `scripts/check_coverage_100.sh` を回します。確認は `make cov-check` /
-  `make cov-not100` / `make cov-file F=<名前>`。**テストは DB も環境変数も不要**
+**詳細 (座標・コマンド・各 workflow の job) は `rust-ichibanboshi` の `rust-ichibanboshi-map` skill
+(`.claude/skills/rust-ichibanboshi-map/`) が正本です。** ここには踏みやすい要点だけ置きます。
+
+- **カバレッジ 100% gate**: `coverage_100.toml` は **root (rdp-relay) と `workers/` の各 Worker
+  (`workers/kintai/`・`workers/ichiban/` ほか) に 1 本ずつ**あり、登録したファイルは 100% 行カバレッジ維持。
+  root は `make cov-check`、workers は各 workflow (`worker-kintai.yml` 等) が回す
 - **★ `tracing` マクロと `format!` を複数行にしないでください。** フォーマット文字列が
   独立行になると (手書きでも rustfmt の折り返しでも) その行が llvm-cov の行
   カバレッジに乗らず gate が落ちます。**このリポジトリで 4 回踏んでいます**
-  - **★ 折り返しの閾値は 100 桁ではありません。実測で 81 文字程度から折れます**
-    (2026-08-03、#620-1 で実測。「100 桁までなら 1 行に書ける」と見積もると踏みます)。
+  - **★ 折り返しの閾値は 100 桁ではありません。実測で 81 文字程度から折れます**。
     **1 行に収める前提でメッセージを短くする**のが確実で、長い説明はコメントへ回してください
 - **100% に到達したファイルは `coverage_100.toml` に足す。** ただし**実行行 0 のファイルは
   登録できません** (登録簿にあるのに計測データに現れないと fail)
-- **`CLAUDE.md` は 50 行 / 2000 字が上限**。rust-ichibanboshi は既に 48 行 / 2800 字で
-  **1 行足すだけで落ちます**。書き足したくなったら `.claude/skills/rust-ichibanboshi-map/`
-  へ。詳細は `rust-ichibanboshi-map` skill 参照
+- **`CLAUDE.md` は 50 行 / 2000 字が上限**。書き足したくなったら `rust-ichibanboshi-map` skill へ
 - **`migrations/` の適用済み migration はコメント 1 文字でも変えない** (SHA-384 照合で loud fail)。
-  適用 `make kintai-migrate` / 検証 `make kintai-rls-verify`。
   **新表の migration には `GRANT` を書く** (`GRANT ON ALL TABLES` は既存表だけのスナップショット。
   書き忘れて本番 502 になった。pg テストは所有者で繋ぐので権限を通りません)
-- **★ 勤怠の版 `logic_version` は、共有 crate の定数 `LOGIC_BASE` と TOML (KosokuParams) だけで
-  決まります。** ファイル名やソースを触っても版は変わらず、deploy で全乗務員が stale に
-  なることも畳み直しも要りません。
-  **計算結果を変える変更では `LOGIC_BASE` を上げ**、`KINTAI_GOLDEN_APPEND=1` で golden の表
+- **★ 勤怠の版 `logic_version` は、`LOGIC_BASE` (`workers/kintai/kosoku/src/kintai_fold.rs`) と
+  TOML (KosokuParams) だけで決まります。** ファイル名やソースを触っても版は変わらず、
+  deploy で全乗務員が stale になることも畳み直しも要りません (etag は変わる)。
+  **計算結果を変える変更では `LOGIC_BASE` を手で上げ**、
+  `KINTAI_GOLDEN_APPEND=1 cargo test -p kintai-kosoku --test logic_golden` で golden の表
   (`workers/kintai/kosoku/tests/golden/logic_outputs.tsv`) に 1 行足す →
-  merge 後に `run_kintai_recalc` で畳み直す。上げ忘れは golden テスト
+  本番に出してから (§1: tag `worker-kintai-v*`) `run_kintai_recalc` で畳み直す。上げ忘れは golden テスト
   (`workers/kintai/kosoku/tests/logic_golden.rs`) が CI で落とす。
-  **ただし固定入力が通らない分岐は検知できない**ので、分岐を足したら入力も足すこと。
-  **ソースのハッシュ (`build.rs` の `KINTAI_OUTPUT_GLOBS` の glob、
-  `(ディレクトリ, ファイル名の接頭辞)`) は HTTP の etag (`/api/kintai/version`) と記録用の
-  `code_sha` にだけ効きます。** glob の外に置くと etag が動かない、という意味でだけ残り、
-  既存ファイルを glob の外へ動かすのは `KINTAI_OUTPUT_REQUIRED` で落ちます (etag 用の検査)
+  **ただし固定入力が通らない分岐は検知できない**ので、分岐を足したら入力も足すこと
 - **ローカルで全体テストや `make cov-check` を回さないでください** (時間が溶けます)。
-  **`cargo fmt --all` だけかけて push**。CI が postgres service 込みで回します
-- `src/kintai_day_summaries.rs` が pg 無しで 57% に見えるのは**回帰ではありません**
+  **`cargo fmt --all` だけかけて push**。CI が回します
 
 ## 6. 踏み抜き済みの罠
 
