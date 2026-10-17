@@ -73,6 +73,8 @@ tool 結果の直後に context が 1 行来るので、それを読んで判断
 | `Monitor を張れなかった (…)` / `Monitor の起動に失敗 (…)` | 書いてある引数で自分で張る |
 | `task ID が取れず自動では止められない` | 要らなくなったら自分で `TaskStop` (残すと archive が塞がる) |
 | `branch が分からず bridge に繋いでいない` | `ref=<branch>` で自分で張る |
+| `auto mode では hook から Monitor を張れない…CI を見張るため自分で Monitor({ … })` | **Claude desktop** の auto mode。書いてある引数で自分で張る (model が張った ws Monitor は通る) |
+| `auto mode では hook から Monitor を張れない…gh pr checks で確認する` | CLI の auto mode。PR の監視か `gh pr checks` で見る |
 | (何も来ない) | 同じセッション・同じ branch は二度張らない仕様。または mod が読まれていない (下の導入) |
 
 - **Monitor は archive を塞がないように止まる。** persistent な Monitor は `archive_session` を「still has live work」で
@@ -85,6 +87,10 @@ tool 結果の直後に context が 1 行来るので、それを読んで判断
     `send_message` を送って 3 秒後に 1 回やり直す。相手の mod はそれを飲み込み (turn を起こさない) 全部止める。
     やり直しの結果に `やり直して畳めた` / `まだ畳めない` が添えられる。**`[pr-bridge-watch:stop]` が本文で届いたら**
     相手の mod が古い / 入っていない — `TaskStop` で Monitor を止めるだけで返信は要らない
+- **Claude desktop でも張る** (plugin 0.1.2〜)。desktop の app が起こすのは Auto-fix オンの PR の失敗だけで、CI の成功・merge は
+  届かない。desktop の Monitor は `persistent` が無く `timeout_ms` は 30 分まで — 切れたら通知が来るので同じ引数で張り直す。
+  0.1.1 の「Claude desktop では app が PR の CI を監視するので…張らない」が出たら mod が古い (`claude plugin update`)。自分で
+  `Monitor({ ws: { url: "ws://127.0.0.1:8799/watch?repo=<owner%2Frepo>&ref=<branch>" }, description: "…", timeout_ms: 1800000 })`
 - Release Wave / タグの CI は ref が branch ではないので mod は張らない。配信まで見るなら §1 の注意どおり別に張る
 - 導入 (Claude Code **2.1.260 以上**。デスクトップアプリの CLI は `~/.claude/remote/ccd-cli/<版>`):
   ```
