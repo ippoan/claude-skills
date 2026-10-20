@@ -747,6 +747,7 @@ chain_check 211 'commit && push → deny' deny 'git commit -m x && git push'
 chain_check 212 '-C <dir> add --all → deny' deny 'git -C /tmp/r add --all'
 chain_check 213 '改行でつないだ commit / push → deny' deny $'git commit -m x\ngit push origin b'
 chain_check 214 '|| でつないだ commit / push → deny' deny 'git commit -m x || git push'
+chain_check 227 'pathspec 付きの -A でも deny (wrangler-editor が旧手順で踏んでいた形)' deny 'git -C /tmp/r add -A -- a.ts b.ts'
 echo "--- L-b. 陰性 (allow) ---"
 chain_check 215 'add <ファイル> → allow' allow 'git add a.ts b.ts'
 chain_check 216 'add <ファイル> && commit → allow' allow 'git add a.ts && git commit -m x'
@@ -754,6 +755,7 @@ chain_check 217 'commit だけ → allow' allow 'git commit -m x'
 chain_check 218 'push だけ → allow' allow 'git push origin b'
 chain_check 219 'ls -A (git 以外) → allow' allow 'ls -A'
 chain_check 220 'add ./src (単独の . ではない) → allow' allow 'git add ./src'
+chain_check 228 'add -- <ファイル> (削除済みも含めて明示) → allow' allow 'git -C /tmp/r add -- a.ts gone.ts'
 d=$(run "$L" "$(bash_payload "$SID" 'git add -A')")
 check 221 L 'deny 文言に「別々の Bash 呼び出し」' yes "$(has "$d" '別々の Bash 呼び出し')"
 mk_child "$SID"

@@ -172,11 +172,16 @@ Refs ohishi-exp/rust-leave-worker#1)。
    実際に commit を書くモデルと食い違う (2026-10-01: 「Opus 5.5」と直書きした子 4 本のうち 3 本が、
    Sonnet へ切り替わった後も Opus の署名で計 7 回 commit した。Refs ohishi-exp/nuxt-dtako-admin#1133)。
    子側の受け方は [[report-to-parent]] にある — **片方だけ直さないこと**。
-   **子に branch の作成・commit・push をさせるタスクでは、起動 prompt の時点で
-   「自分では打たず、最初から `wrangler-editor` で行う」と書く。** 拒否された後から agent を
-   持ち出すと、子は「拒否された操作の別経路での打ち直し」として断る (2026-10-09、#p322-c31 で
-   実際に断った。起票し直した c31-2 は最初から agent を使い 1 回で通った。
-   Refs ohishi-exp/rust-ichibanboshi#322)。
+   **子の branch の作成・commit・push は、既定では子が自分で打つ** — `git add <ファイルを明示>`・
+   `git commit`・`git push -u origin <作業 branch>` を別々の Bash 呼び出しで (2026-10-20 ユーザー指示。
+   wrangler-editor を既定にしていた間、agent の `add -A -- <files>` が hook に毎回 1 回目で止められ、
+   その後の打ち直しが分類器に迂回と判定されて、ユーザーが子のタブに「コミットして」と打つ運用に
+   なっていた)。
+   **`wrangler-editor` を使わせるのは、wrangler.toml の置換や 20 個超の分割 commit など agent の
+   確認 4 点が要るときだけ。そのときは起動 prompt の時点で「自分では打たず、最初から
+   `wrangler-editor` で行う」と書く。** 拒否された後から agent を持ち出すと、子は「拒否された操作の
+   別経路での打ち直し」として断る (2026-10-09、#p322-c31 で実際に断った。起票し直した c31-2 は
+   最初から agent を使い 1 回で通った。Refs ohishi-exp/rust-ichibanboshi#322)。
    **後から別経路を持ち出さず、最初から承認しておく** — 冒頭の「ユーザーの承認 (この起動で確定)」節で
    その branch の commit・push を承認済みにし、それでも止められたときは §6 の中継
    (`【人間 (ユーザー本人) の指示の中継】`) で解く。agent への切り替えで解こうとしない。

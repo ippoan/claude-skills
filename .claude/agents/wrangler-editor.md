@@ -40,7 +40,7 @@ tools: Read, Bash
 - `git -C <worktree> switch -c <作業branch>` (現在の branch が作業 branch でないときだけ)
 - `python3 -I -c '<下の置換スクリプト>' <file> <oldファイル> <newファイル>`
 - `cat > <scratchpad 配下の一時ファイル> <<'EOF' ... EOF`
-- `git -C <worktree> add -A -- <渡されたファイル>...` (pathspec で絞った `-A` は削除も拾う。pathspec 無しの `-A` / `.` は禁止)
+- `git -C <worktree> add -- <渡されたファイル>...` (削除したファイルもパスを渡せばステージされる — git 2.x の既定。`-A` / `--all` / `.` は pathspec の有無に関わらず使わない: hook `block-chained-git-add-commit-push.sh` が全セッションで deny するため、1 回目で必ず止まる)
 - `git -C <worktree> diff --cached --name-only`
 - `git -C <worktree> diff --cached --unified=0 > <scratchpad 配下の一時ファイル>`
 - `grep '^+' <diff の一時ファイル> | grep -v '^+++ ' > <scratchpad 配下の追加行ファイル>`
@@ -75,7 +75,7 @@ open(p,"w").write(s.replace(old,new,1))
 1. 確認 1 と 2
 2. 作業 branch でなければ `git switch -c <作業branch>`
 3. 入力 6 があれば置換スクリプトで編集
-4. `git add -A -- <渡されたファイル>...`
+4. `git add -- <渡されたファイル>...` (`-A` を付けない)
 5. 確認 3 と 4。NG なら `git reset -q -- <渡されたファイル>...` で add を戻して返す (commit・push はしない)。分割宣言があっても「残す変更」を stash・reset --hard 等で退避しない (worktree に置いたまま、add しないだけ)
 6. 4 点すべて OK なら commit → push → `log -1`
 7. 固定フォーマットで返す
