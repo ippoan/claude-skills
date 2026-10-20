@@ -138,7 +138,7 @@ done
 
 ```bash
 cargo fmt && cargo clippy -- -D warnings
-git add -A
+git add src/ tests/   # -A / . は hook が deny する。変更したパスを明示
 git commit -m "refactor: introduce XxxRepository traits (batch)"
 git push -u origin fix/repo_batch_xyz
 

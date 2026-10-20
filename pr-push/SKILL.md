@@ -44,7 +44,8 @@ bash ~/.claude/skills/pr-push/scripts/pr-push.sh "<title>" "<body>"
 ```bash
 # worktree で修正 → コミット
 cd .claude/worktrees/xxx
-git add -A && git commit -m "fix: ..."
+git add path/to/changed-file   # -A / . は hook が deny する。ファイルを明示
+git commit -m "fix: ..."
 
 # 再度スキル実行 (PR は既にあるので push + CI watch だけ)
 bash ~/.claude/skills/pr-push/scripts/pr-push.sh "同じタイトル" "同じ本文"
