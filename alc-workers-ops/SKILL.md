@@ -17,17 +17,26 @@ Tunnel ID・Supabase の project ref・プーラーのホスト名・Hyperdrive 
 
 - 新しい migration は **alc-migrations に PR を出す**。
 - rust-alc-api の `migrations/`・`scripts/init_local_db.sql`・`scripts/local_app_grants.sql` は
-  **切り替えまで追加・変更禁止**。`ci.yml` の `pr-limit` job の step が落とす
-  (rust-alc-api#700)。削除だけは通る。
+  **切り替え (rust-alc-api#754) で消した。足し直し禁止** (`ci.yml` の `pr-limit` job の step が落とす。
+  rust-alc-api#700)。
 - alc-migrations の中身: 薄い crate `alc-migrations` (`MIGRATOR` = `sqlx::migrate!`、
   `INIT_LOCAL_DB`、`LOCAL_APP_GRANTS`、feature `cli` の `alc-migrate` バイナリ)。
 - **版の規約**: minor = 最新の migration 番号 (例 `0.152.0`)、patch = SQL 以外の変更。
   migration を足したら minor を上げる。
-- 133 番は欠番 (埋めない)。`_sqlx_migrations` は 151 件・最大 152。
+- 133 番は欠番 (埋めない)。件数・最大番号は `migrations/` を見る (ここに数を書かない。すぐ古くなる)。
 - CI は test / replay (postgres に 0 から流す) / safety で、約 1.5 分。
 - 公開: tag `v*` → crates.io の trusted publishing。**初回だけは手で公開が要る (未実施)**。
-- rust-alc-api をこの crate に切り替えるのは**未実施** (テストの `sqlx::migrate!` を
-  `alc_migrations::MIGRATOR` に替え、`migrations/` を消す)。
+- **rust-alc-api はこの crate に切り替え済み** (rust-alc-api#754)。`Cargo.toml` の git 依存の
+  **rev** で版を決める (crates.io ではない)。新しい migration を取り込むには rev を上げる。
+  - テストと staging の起動 (`src/bin/migrate.rs`) は、同じ rev の `INIT_LOCAL_DB` を
+    `to_regnamespace('alc_api')` が NULL のときだけ流し、続けて `MIGRATOR` を流す (空の DB から作る)。
+    init は冪等でない (`CREATE ROLE`) ので、この判定を外さない。
+  - staging の DB の image は素の postgres で、SHA のタグで固定する (`:latest` は Artifact Registry の
+    remote cache で古いものが返る)。
+  - frontend の結合テスト (ci-workflows の `frontend-ci.yml`) は、検証する backend の SHA の
+    `Cargo.toml` から rev を読み、その rev の `scripts/init_local_db.sql` を alc-migrations から取る
+    (ci-workflows#198)。**各 repo に init の写しを commit しない** (auth-worker#670 で消した。
+    写しが古いと、migration と食い違って Release Wave の再テストが落ちる)。
 - 規範:
   - 適用済み migration は変えない (checksum は SQL 本文の SHA-384)。
   - 既定は足すだけ (expand)。消す・名前を変えるのは全 worker が移った後に別 PR (contract)。
