@@ -1,7 +1,7 @@
 ---
 name: gh-actions-live
 description: >
-  GitHub Actions の run 状態変化を、Windows Chrome 拡張 (ippoan/gh-actions-live) →
+  GitHub Actions の run 状態変化を、拡張 (ippoan/gh-actions-live。Linux の headless Chromium、Windows Chrome は並行運用中) →
   Linux の常駐 bridge → Monitor の ws /watch で **自分の repo / run だけ push で受け取る**運用。`gh run list` を sleep
   ループで叩く代わりに使う。Claude から拡張の設定・ウィンドウ起動・更新が
   github.com のタブ経由 / bridge 経由でできる。トリガー: 「CI を見張って」
@@ -13,6 +13,8 @@ description: >
   PR 作成時に bridge へ自動で繋ぐ Claude Mod (pr-bridge-watch、function hooks) の導入・挙動・
   archive との関係にも使う。トリガー: 「pr-bridge-watch」「Claude Mods」「function hooks」
   「CLAUDE_CODE_ENABLE_FUNCTION_HOOKS」「PR を作ったら自動で見張る」「Monitor が archive を塞ぐ」「[pr-bridge-watch:stop]」等。
+  CI を会話の中・横に見せる口にも使う。トリガー: 「ウィジェット」「actions_dashboard」「右側パネル」
+  「/actions-pane」「connector を繋ぎ直す」「ホスト診断」等。
 ---
 
 # gh-actions-live — Actions の変化を push で受ける
@@ -20,17 +22,46 @@ description: >
 **repo**: https://github.com/ippoan/gh-actions-live (public)。Release は main merge ごとに自動採番。
 
 ```
-Windows Chrome 拡張 ──ws://<linux tailscale>:8799──▶ gh-actions-bridge (Rust、systemd --user で常駐)
+Linux headless Chromium の拡張 ─ws://127.0.0.1:8799─┐
+Windows Chrome 拡張 (並行運用中) ─ws://<tailscale>:8799─▶ gh-actions-bridge (Rust、systemd --user で常駐)
    (extension = ダッシュボード / extension-bg = service worker)     │ ws /watch?repo=…&run=…
 Claude ── POST localhost:8799/cmd {"command":...} ────────────────▶│ (条件に合う run だけ 1 行ずつ)
-                                                                   ▼
-                                                 各セッションの Monitor (ws ソース)
+                                                                   ├─▶ 各セッションの Monitor (ws ソース)
+                                                                   └─▶ POST /mcp (読み取りだけ) ─▶ ウィジェット / 右側パネル
 Claude ── Claude in Chrome で github.com タブ → chrome.runtime.sendMessage(<拡張ID>, {command:...})
 ```
 
 拡張は GitHub の **Actions ページそのもの**をスナップショットにし、alive.github.com の
 WebSocket を購読する。集約ダッシュボード (repo あたり 1〜2 件に畳むもの) と違い、
 **同一 repo の並列 run が全部個別に見える**。
+
+**拡張の役目は Linux へ移った (#62)。** 同じ拡張を bridge と同じ Linux の headless Chromium
+(`gh-actions-browser.service`、systemd --user) に載せて常駐させる。snap の Chromium、プロファイルは
+`~/snap/chromium/common/gh-actions-live-profile`、CDP は `127.0.0.1:9223` だけ (外へ出さない — ログイン済み
+ブラウザの全権になる)。GitHub のログインは `linux-browser/github-login.sh` (2FA は GitHub Mobile。
+パスキーは headless で使えない)。導入は repo の README「Linux で拡張を動かす」。
+Windows の拡張 (§4) は並行運用中で、いずれ止める。
+
+## 0. 見る (ウィジェットと右側パネル)
+
+見張り (§1 の Monitor) とは別に、run の一覧を**人に見せる**口が 2 つある。どちらも bridge の `POST /mcp`
+(読み取りだけ) を読み、GitHub の API は叩かない。
+
+- **ウィジェット**: PR を作ったら**その場で** connector の `actions_dashboard` を
+  `{ repo: "<owner/repo>", since: "<PR 作成 1 分前の UTC>" }` で 1 回呼ぶ。**全 repo は出さない**。
+  - ツールは claude.ai の custom connector 経由の `mcp__<uuid>__actions_dashboard` を使う。
+    `claude mcp add` のローカル MCP (`mcp__gh-actions-live__…`) ではウィジェットは描かれない (テキストだけ)
+  - Code タブのホストは `hostCapabilities` に `serverTools` を出さない (ウィジェットからの `tools/call` は -32601) が
+    `serverResources` は出す → ウィジェットは `resources/read` (`gh-actions-live://dashboard?repo=…&since=…`) で
+    5 秒ごとに更新する (#73 で診断・#74)。ウィジェット下の「ホスト診断」で `mode` (tools / resources / none) と
+    `firstRead` が見える。`none` なら自動更新されないので呼び直す
+  - **ウィジェットの HTML やツールの引数を変えたら、claude.ai の設定 → Connectors で connector を切断 → 接続し直す。**
+    claude.ai は接続時に `ui://` を先読みして使い回す (bridge の入れ替えでも新しいセッションでも読み直さない)。
+    古いかは見出しの版 (`v<版>+<HTML のハッシュ>`) で見分ける
+- **右側パネル**: pr-bridge-watch 0.1.5 の `hooks/pane.tsx`。PR を作ると、その repo の run (PR 作成 1 分前以降) が
+  Code タブの右側パネルに 5 秒ごとに出る。`/actions-pane owner/repo` で repo を足して開く (引数なしは開くだけ)。
+  plugin の更新は**新しいセッションからしか効かない**
+- push で現れた run は bridge が最初に見た時刻 (`seenAt`) を持つ (#76)。経過時間は実際より短く出うる
 
 ## 1. CI を見張る (Linux 側)
 
@@ -68,6 +99,8 @@ tool 結果の直後に context が 1 行来るので、それを読んで判断
 | context | 意味 / やること |
 |---|---|
 | `…に Monitor で繋いだ (task <id>)。local の branch が消えたら次の Actions 通知で…自動で止める` | 何もしない。通知を待つ |
+| `pr-bridge-watch: この PR の CI はウィジェットで見せる…actions_dashboard を { repo, since } で 1 回呼ぶ` | 書いてある引数でそのまま呼ぶ (connector 経由。§0) |
+| `… → Monitor (task X) は既に終わっていた` | bridge の再起動で Monitor が先に閉じていただけ (0.1.4〜)。害は無い |
 | `local に branch <ref> が見つからず突合では止まらない` | 別 clone で作った PR 等。要らなくなったら自分で `TaskStop` |
 | `bridge (…) に届かない。…戻ったら Monitor({ … })` | bridge を直し (§1 bridge の状態)、書いてある引数で自分で張る |
 | `Monitor を張れなかった (…)` / `Monitor の起動に失敗 (…)` | 書いてある引数で自分で張る |
@@ -77,6 +110,9 @@ tool 結果の直後に context が 1 行来るので、それを読んで判断
 | `auto mode では hook から Monitor を張れない…gh pr checks で確認する` | CLI の auto mode。PR の監視か `gh pr checks` で見る |
 | (何も来ない) | 同じセッション・同じ branch は二度張らない仕様。または mod が読まれていない (下の導入) |
 
+- **CI の途中経過を会話に出さない。** queued ⇄ currently running は job の切り替わりで何度も行き来する。
+  待つのは background の agent に任せ (hook の Monitor は `TaskStop` してよい)、報告は完了・失敗・merge の 1 回だけ
+  (ユーザー指示 2026-11-12「むだにだすのやめろ」「agentにまかせろ」)。見た目はウィジェット / 右側パネル (§0) が受け持つ
 - **Monitor は archive を塞がないように止まる。** persistent な Monitor は `archive_session` を「still has live work」で
   拒否させる。mod の止めどきは 3 つ (ログに `…を止めた` が出る):
   - **Actions 通知 (task-notification) が来るたびに全部の見張りを local branch と突合**し、消えていたら `TaskStop`。
@@ -87,7 +123,7 @@ tool 結果の直後に context が 1 行来るので、それを読んで判断
     `send_message` を送って 3 秒後に 1 回やり直す。相手の mod はそれを飲み込み (turn を起こさない) 全部止める。
     やり直しの結果に `やり直して畳めた` / `まだ畳めない` が添えられる。**`[pr-bridge-watch:stop]` が本文で届いたら**
     相手の mod が古い / 入っていない — `TaskStop` で Monitor を止めるだけで返信は要らない
-- **Claude desktop でも張る** (plugin 0.1.2〜)。desktop の app が起こすのは Auto-fix オンの PR の失敗だけで、CI の成功・merge は
+- **Claude desktop でも張る** (0.1.2〜。今の版は 0.1.5)。desktop の app が起こすのは Auto-fix オンの PR の失敗だけで、CI の成功・merge は
   届かない。desktop の Monitor は `persistent` が無く `timeout_ms` は 30 分まで — 切れたら通知が来るので同じ引数で張り直す。
   0.1.1 の「Claude desktop では app が PR の CI を監視するので…張らない」が出たら mod が古い (`claude plugin update`)。自分で
   `Monitor({ ws: { url: "ws://127.0.0.1:8799/watch?repo=<owner%2Frepo>&ref=<branch>" }, description: "…", timeout_ms: 1800000 })`
@@ -100,10 +136,12 @@ tool 結果の直後に context が 1 行来るので、それを読んで判断
   ```
   入れた / 更新した plugin は**起動中のセッションでは読み直されない** (新しいセッションから効く)。
   install 時の「userConfig option not yet set」は既定値 (`bridgeUrl` = `ws://127.0.0.1:8799`) で動くので無視してよい
-- mod を直すときは ippoan/gh-actions-live の README「PR を作ったら bridge に自動で繋ぐ」と CLAUDE.md
+- mod を直すときは ippoan/gh-actions-live の README「PR を作ったら bridge に自動で繋ぐ」と CLAUDE.md。
+  **`plugin.json` の version を必ず上げる** (上げないと `claude plugin update` が「最新」と返して取り込まれない。#70 で踏んだ)。
+  `hooks.json` の `modules` は 1 plugin に 1 つ (2 つ目は validate が拒否) → 入口 `hooks/index.ts` で束ねる
 
 bridge の状態:
-- `curl -s localhost:8799/` の `clients` に `extension-bg@<win tailscale ip>` が居れば拡張が生きている。
+- `curl -s localhost:8799/` の `clients` に `extension-bg@…` (Linux の Chromium は `127.0.0.1`、Windows は tailscale の IP) が居れば拡張が生きている。
   `extension@…` はダッシュボードが開いている印。`watchers` は今繋がっている /watch の条件
 - 全 repo の変化・ack・接続ログは `journalctl --user -u gh-actions-bridge -f`
 - 入っていない / 更新したとき: `cd ~/claude260730/gh-actions-live && cargo install --locked --path bridge`、
@@ -230,3 +268,5 @@ bridge に認証は無く、8799 に届く者が Chrome で任意のページを
   (install は成功して見える)。dispatch を越える timer は `session.start` で `$.clock.every(…)` の閉包を持つ
 - **plugin が張った Monitor の task ID は transcript に残らない。** 旧版 (task ID を context に出さない) が張った
   Monitor は後から `TaskStop` できず、そのセッションの archive を塞ぐ → アプリのタスク一覧から止める
+- **Monitor の通知ごとに「まだ終わっていません」と返さない。** 途中経過は黙り、完了・失敗・merge の 1 回だけ報告する (§1)
+- **bridge を入れ替えると ws の Monitor は 1006 で閉じる。** CI の途中なら張り直すか、待ちを agent に任せる
