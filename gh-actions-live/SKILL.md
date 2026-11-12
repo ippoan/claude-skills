@@ -158,8 +158,8 @@ curl -s -X POST localhost:8799/cmd -d '{"command":"snapshot"}'      # 全 run �
 curl -s -X POST localhost:8799/cmd -d '{"command":"status"}'        # alive socket の診断 (ダッシュボードの {type:status} と bg の ack の 2 行)
 curl -s -X POST localhost:8799/cmd -d '{"command":"alive-reset"}'   # alive socket を閉じて張り直す (status が connected:false のまま戻らないとき)
 ```
-**★ Linux で bridge の `reload` コマンドを打つと拡張が戻らない (2026-11-12 実測。別タスクで修正中)。**
-拡張を読み直す (作業ツリーを `git pull` した後など) ときは `systemctl --user restart gh-actions-browser`。
+拡張を読み直す (作業ツリーを `git pull` した後など) ときは `curl -s -X POST localhost:8799/cmd -d '{"command":"reload"}'`
+(Chromium の起動時に `linux-browser/developer-mode.mjs` がデベロッパー モードをオンにしているので数秒で bridge に戻る。§5)。
 `status` の `alive.connected:false` が続くなら `alive.lastState` / `alive.background.relay.readyState`
 (0=CONNECTING 1=OPEN null=socket 無し) を見る。v0.0.22 以降は watchdog が勝手に張り直す (#25)。
 `delivered_to: 0` なら拡張が繋がっていない。
@@ -220,7 +220,9 @@ README「Linux で拡張を動かす」を見る。
 - ack / status の結果は `/watch` には来ない (通知ノイズ防止)。`journalctl --user -u gh-actions-bridge` を grep
 - alive の WebSocket は github.com のタブ (content script) で張る。拡張ページから張ると `Origin: chrome-extension://` で
   握手直後に 1006 で切られ、DNR では握手の Origin を変えられない (v0.0.19 で実測・失敗)
-- **Linux で bridge の `reload` を打たない** (拡張が戻らない。2026-11-12 実測・別タスクで修正中)。`systemctl --user restart gh-actions-browser` で読み直す (§2)
+- **Chrome 133+ では unpacked 拡張はデベロッパー モードのときだけ有効。** オフだと `reload` で `unsupportedDeveloperExtension` として
+  無効化され bridge に戻らない。`chromium.sh` が起動時にオンにしている。止まったら gh-actions-live の main clone で
+  `node linux-browser/developer-mode.mjs` (再起動不要) か `systemctl --user restart gh-actions-browser`
 - 切断時に無条件で Actions ページを取り直すと 5 秒周期ポーリングになる → バックオフ必須
 - 詳細な経緯・未解決は repo の issue と memory (`gh-actions-live-bridge`)
 - `ref=main` だけの /watch で配信を待たない (Release Wave は ref 無し、タグの CI は ref がタグ名。§1)
