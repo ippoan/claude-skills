@@ -14,6 +14,8 @@ description: >
   「CLAUDE_CODE_ENABLE_FUNCTION_HOOKS」「PR を作ったら自動で見張る」「Monitor が archive を塞ぐ」「[pr-bridge-watch:stop]」等。
   CI を会話の中・横に見せる口にも使う。トリガー: 「ウィジェット」「actions_dashboard」「右側パネル」
   「/actions-pane」「connector を繋ぎ直す」「ホスト診断」等。
+  右側パネルで Release Wave の切り替え待ちを見て Flip する口にも使う。トリガー: 「Release Wave」「切り替え待ち」
+  「Flip」「pending flip」等。
 ---
 
 # gh-actions-live — Actions の変化を push で受ける
@@ -56,9 +58,18 @@ WebSocket を購読する。集約ダッシュボード (repo あたり 1〜2 �
   - **ウィジェットの HTML やツールの引数を変えたら、claude.ai の設定 → Connectors で connector を切断 → 接続し直す。**
     claude.ai は接続時に `ui://` を先読みして使い回す (bridge の入れ替えでも新しいセッションでも読み直さない)。
     古いかは見出しの版 (`v<版>+<HTML のハッシュ>`) で見分ける
-- **右側パネル**: pr-bridge-watch 0.1.5 の `hooks/pane.tsx`。PR を作ると、その repo の run (PR 作成 1 分前以降) が
-  Code タブの右側パネルに 5 秒ごとに出る。`/actions-pane owner/repo` で repo を足して開く (引数なしは開くだけ)。
-  plugin の更新は**新しいセッションからしか効かない**
+- **右側パネル**: pr-bridge-watch 0.1.8 の `hooks/pane.tsx`。PR を作ると、その repo の run (PR 作成 1 分前以降) が
+  Code タブの右側パネルに 5 秒ごとに出る。`/actions-pane owner/repo` で repo を足して開く (引数なしはセッションの
+  `git remote get-url origin` から repo を引いて足す)。plugin の更新は `claude plugin update` の後、**新しいセッションからしか効かない**
+  - **Release Wave の切り替え待ち (pending flip)** (0.1.7〜、ippoan/gh-actions-live#83): run の下に、**パネルを開いている間だけ**
+    30 秒ごとに出る。データは ci-dashboard の connector の `release_wave_pending_state` (`unified`) を mod が `$.tool.call` で読む
+    (ci-dashboard は OAuth / CF Access の内側で mod も bridge も token を持たないため、bridge は通さない)。
+    connector が無ければ「ci-dashboard の connector が繋がっていません」と出して読みを止める → 繋いだら `/actions-pane` で再開
+  - 行ごとに「Flip → 確定」の 2 段 (確認 1 回) で `release_wave_pending_flip` を `{ repo, worker_name? }` で呼ぶ。tag の無い version は押せない。
+    settings の `permissions.ask` に `…__release_wave_pending_flip` があると mod の呼び出しは deny になる → 同じ引数でモデルに頼む一文を
+    会話に回し、セッションの許可カードで止まる (確認が 2 回になるのは仕様。ask を外さない)
+  - 投げた後は「切り替えを依頼しました (GitHub Actions で実行)」とだけ出し、**成否は断言しない**。次の読みで
+    「切り替え待ちから消えました」/「まだ切り替え待ちに残っています」を出す (最大 5 分追う)。結果は Release Wave の run で見る
 - push で現れた run は bridge が最初に見た時刻 (`seenAt`) を持つ (#76)。経過時間は実際より短く出うる
 
 ## 1. CI を見張る (Linux 側)
@@ -121,7 +132,7 @@ tool 結果の直後に context が 1 行来るので、それを読んで判断
     `send_message` を送って 3 秒後に 1 回やり直す。相手の mod はそれを飲み込み (turn を起こさない) 全部止める。
     やり直しの結果に `やり直して畳めた` / `まだ畳めない` が添えられる。**`[pr-bridge-watch:stop]` が本文で届いたら**
     相手の mod が古い / 入っていない — `TaskStop` で Monitor を止めるだけで返信は要らない
-- **Claude desktop でも張る** (0.1.2〜。今の版は 0.1.5)。desktop の app が起こすのは Auto-fix オンの PR の失敗だけで、CI の成功・merge は
+- **Claude desktop でも張る** (0.1.2〜。今の版は 0.1.8)。desktop の app が起こすのは Auto-fix オンの PR の失敗だけで、CI の成功・merge は
   届かない。desktop の Monitor は `persistent` が無く `timeout_ms` は 30 分まで — 切れたら通知が来るので同じ引数で張り直す。
   0.1.1 の「Claude desktop では app が PR の CI を監視するので…張らない」が出たら mod が古い (`claude plugin update`)。自分で
   `Monitor({ ws: { url: "ws://127.0.0.1:8799/watch?repo=<owner%2Frepo>&ref=<branch>" }, description: "…", timeout_ms: 1800000 })`
