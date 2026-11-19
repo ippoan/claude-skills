@@ -50,7 +50,7 @@ gh pr create --repo ohishi-exp/wix-ohishiunyusouko-backup --fill   # merge は�
 
 - **pre-push hook** (`tools/pre-push` → `tools/check-history.sh`) が本番を取り直して「版番号 = HISTORY.md の最新行の版」「本文 = `snapshot/`」を照合し、違えば push を止める。照合は**手元の hook だけ** (GitHub Actions は使わない、とユーザー判断)。
 - **`siteRevision` はエディタで公開したときだけ増える**。ブログの変更 (記事の再公開・ブログ設定) では増えない (2026-11-19 に 19 記事を再公開しても 1120 のまま)。ブログだけの変更は本文の照合で拾う。HISTORY.md には同じ版の行が複数あってよい。
-- **共通 pre-push hook は repo の hook を `git rev-parse --git-dir`/hooks で探す**。worktree ではそれが `.git/worktrees/<名前>/hooks` を指すので、`tools/install-hook.sh` で本体と worktree の両方に symlink を置かないと照合が動かない。
+- **共通 pre-push hook は repo の hook を `git rev-parse --git-dir`/hooks で探す**。worktree ではそれが `.git/worktrees/<名前>/hooks` を指すので、`tools/install-hook.sh` で本体と worktree の両方に hook を置かないと照合が動かない。置くのは「push した作業場所の `tools/pre-push` を呼ぶ」中継スクリプト。**symlink にすると、worktree を消した瞬間にリンク先が無くなり照合が黙って止まる** (一度踏んだ)。本体の `.git/hooks/pre-push` が中継スクリプトか、ときどき `head -3` で確かめる。
 - snapshot は Wix がサーバー側で返す HTML から script/style を捨てて文字だけにする。同じ版なら毎回同じ結果 (2 回取って完全一致を確認済み)。日本語 URL は `urllib.parse.quote` が要る。Wix はたまに 1 ページだけ応答が止まるので再試行を入れてある。
 - snapshot で取れないもの: 表アプリ (iframe) の中身と見た目。表を直したときは `tools/backup.sh` も回す。
 
