@@ -69,6 +69,7 @@ git worktree remove --force <scratchpad>/wix-backup
 
 ## 罠 (踏み抜き済み)
 
+- **本番ページをブラウザで開くとサイトの統計に数えられる** (Wix の統計と Google Analytics の両方。cookie 同意バナーが無いので止まらない。iPhone の UA で撮るとスマホの訪問に見える)。playwright では必ず repo の `tools/no-analytics.mjs` の `blockAnalytics(ctx)` を `newPage()` の前に呼ぶ (frog.wix.com / panorama.wixapps.net / google-analytics / googletagmanager を route で落とす。表示は変わらない)。回線の IP が固定でないので IP での除外は使えない。curl (`record.sh`) は JS を動かさないので対象外。ユーザーの Chrome は Wix にログインしていれば Wix の統計には数えられない (同じ端末・ブラウザに限る)。
 - **Wix は通信が止まない**。playwright の `networkidle` 待ちは 60 秒ずつ空振りする。`load` → 最後までスクロール → 数秒待ち。
 - **日本語フォントが無いとスクリーンショットが □ だらけ**。このマシンは `~/.local/share/fonts/noto-cjk/` に Noto CJK を入れてある (sudo 不要)。
 - **会社概要の表・営業所一覧は Wix 表アプリの iframe** (`wix-visual-data.appspot.com`)。`page.content()` や `innerText` には入らない。`page.mainFrame().childFrames()` で枠ごとに取る。
@@ -78,6 +79,20 @@ git worktree remove --force <scratchpad>/wix-backup
 - **`~/claude260730/` 配下の main clone は Write/Edit が hook で拒否**される (`git init` しただけのフォルダも対象になる)。作業は worktree で。
 - **`git add -A` と commit と push を 1 回の Bash でつなぐと分類器に止められる**。add はパスを明示、commit・push は別の呼び出しで。
 - 新 Wix Forms の API (`wix.form_app.form`) は「この site に無い」と返る。お問い合わせは旧フォームなので、送信履歴は管理画面からの CSV 書き出ししか無い。
+
+## エディタでスマホ表示を直す (Claude in Chrome)
+
+- 開き方: `https://manage.wix.com/editor/<siteId>` → 上部「ページ」で切替 → スマホアイコン。編集は「保存」まで。**公開はユーザー**。保存後のダイアログは「閉じる」(「今すぐ公開」を押さない)。
+- 先に本番のスマホ表示を撮って座標を測る (viewport 390・isMobile・iPhone の UA。表アプリ等は画面に入ってから読み込むので少しずつスクロール)。本番の `getBoundingClientRect` は 320 幅のページ座標で返るので、エディタの X / Y にそのまま使える。
+- 位置・高さは右パネルの X / Y / 高 に数値入力 (三回クリック → 入力 → Enter)。Y はページ絶対値。**パネルの縦位置は選んだ部品の種類で変わる**ので、X 欄に Y を入れる事故が起きる。入力前に zoom で欄を確かめる。戻すのは上部の ↶。
+- 入れ子の部品はクリック 1 回目で親 (セクション・ボックス) が選ばれる。もう 1 回で子。ヘッダーと重なる部品はレイヤーパネル (左下) から選ぶ。レイヤーの並びは編集の途中で入れ替わることがあるので、選んだ行をその都度確かめる。
+- **スマホのセクション順はレイヤーパネルのドラッグでは変わらない** (レイヤー上だけ変わる)。画面上でセクションにマウスを乗せると横に出る ↑↓ で動かす。
+- スマホで非表示のセクションを「モバイル上で非表示」パネルから「表示」に戻すと、別セクションへ移されていた子部品が元のセクションに戻り、並びも PC 順に戻ることがある。抜けた側に空白が残るので高さを詰める。
+- セクションの上端が動くと子も一緒に動くことがある。変えた後は preview iframe の DOM (`document.getElementById('preview').contentDocument`) で位置を測り直す。セクションの高さは数値欄が灰色で入らないので、下端中央のつまみ (`[data-hook=section-edge-resize-button]`) をドラッグする (画面 1px ≒ ページ 1.25px)。
+- 部品をどけると、下にあった部品は寄ってこない (スマホの一覧の下・PC のセクション)。空白を数値で詰める。
+- **保有車両の車両一覧 (旧リスト部品) はエディタとプレビューで崩れて描かれる** (文字が 1 文字ずつ縦に並び、高さが本番の倍以上)。重ねて置く部品の位置は本番の座標で決め、公開後に本番で確かめる。
+- **コラージュ (ギャラリー) のスマホの高さは PC の縦横比から決まり、数値欄は灰色**。PC の幅が大きいと 282×49 のように潰れて写真が豆粒になる。スマホでレイアウト → 画像の配置を「縦」にすると幅いっぱいになる (PC は変わらない)。
+- PC で部品を削除すると部品ごと消える (スマホからも)。スマホだけ消すなら非表示ボタン。
 
 ## ブログのコメント
 
