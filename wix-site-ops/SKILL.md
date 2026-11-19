@@ -56,8 +56,10 @@ git worktree remove --force <scratchpad>/wix-backup
 ## ブログのコメント
 
 - 全体設定は Blog Settings API (`GET`/`PATCH .../v3/blog-settings/v3/blog-settings`)。`comments` の 4 項目 (`enabled` / `anonymousEnabled` / `ratingsEnabled` / `ratingsMandatory`) は**必ず 4 つ一緒に**送り、`revision` も渡す。
-- `enabled: false` にすると全記事のコメント欄と既存コメントが**非表示**になる (削除はされない。戻せば再表示)。
-- 管理画面なら: ブログ → その他のアクション → ブログ設定 → 「コメントと評価」。
+- ヘルプには「`enabled: false` で全記事のコメント欄と既存コメントが非表示」とあるが、**このサイトでは全体設定を切っても記事ページにコメント欄が出たままだった** (10 分待っても変わらず)。効いたのは**記事ごとの設定**。全体設定は `enabled: false` のまま残してある。
+- 記事ごと: `PATCH https://www.wixapis.com/blog/v3/draft-posts/{postId}` に `{"draftPost":{"commentingEnabled":false},"action":"UPDATE_PUBLISH"}`。post と draft post は同じ id。**`UPDATE_PUBLISH` は下書きを丸ごと公開する**ので、先に draft を GET して `hasUnpublishedChanges: true` の記事は飛ばす (未公開の編集を本番に出してしまう)。止めると既存コメントも非表示になる (削除はされない)。
+- 確認は API の値ではなく**本番ページで**: playwright で記事を開いて最後までスクロールし、「コメントを追加」と既存コメントの文字が消えたかを見る。
+- 管理画面なら: 全体はブログ → その他のアクション → ブログ設定 → 「コメントと評価」。記事ごとはブログ → 投稿 → 編集 → 設定 →「この記事へのコメントを許可」→ 公開。
 
 ## 編集・レビュー・公開の流れ (発注者・レビュアーがいる場合)
 
